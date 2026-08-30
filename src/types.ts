@@ -16,7 +16,7 @@ export interface LiveLocation {
   user_id: string;
   lat: number;
   lng: number;
-  accuracy?: number | null;
+  accuracy?: number;
   speed?: number | null;
   updated_at: string;
 }
