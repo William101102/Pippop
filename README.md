@@ -1,60 +1,51 @@
 # Pinpop
 
-Zenly-style friend location map — React + TypeScript + Vite frontend with Supabase backend.
+A privacy-first social map inspired by the playful parts of Zenly. Pinpop is now split into a
+React/TypeScript web frontend and a versioned Supabase backend.
 
-## Stack
+## Included in the web foundation
 
-- **Frontend:** React 18, TypeScript, Vite, Leaflet
-- **Backend:** Supabase (Auth, Postgres, Realtime)
-- **Deploy:** GitHub Pages via `.github/workflows/pages.yml`
+- Original Pinpop app icon and PWA icon set
+- Photo avatar upload through a locked-down Supabase Storage bucket
+- Photo-based map pins, profile cards and friend rows
+- Playful social-map visual system for desktop and mobile
+- Responsive live friend map and presence cards
+- Friend discovery, messages and quick reactions
+- What's Up interaction entry point
+- Precise, blurred and frozen Ghost Mode UI
+- Places, check-ins and personal-world foundations
+- Footprint/history data model and private analytics UI
+- Hardened database policies, blocks and expiring highlights
+- Preview mode so UI work is testable without production data
 
-## Quick start
+## Structure
+
+```text
+src/                         React web application
+backend/supabase/migrations/ Database schema and RLS policies
+.github/workflows/           Build and GitHub Pages deployment
+```
+
+## Local development
 
 ```bash
 cp .env.example .env.local
-# fill VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm install
 npm run dev
 ```
 
-## Scripts
+Add the public Supabase URL and anon key to `.env.local`. Never expose a service-role key.
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Local dev server |
-| `npm run build` | Production build to `dist/` |
-| `npm run typecheck` | TypeScript check |
-| `npm run preview` | Preview production build |
+Run the Supabase migrations in filename order on a development project before production. The
+avatar migration creates a public-read `avatars` bucket with owner-only writes. The auth bootstrap
+migration creates a profile for new Auth users and repairs older Auth users missing a profile.
 
-## Environment variables
+## Deployment
 
-Set in `.env.local` locally and as **GitHub repository variables** for Pages:
+Set repository variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then enable GitHub
+Pages with GitHub Actions as its source. Every push to `main` builds and deploys `dist/`.
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+## Product roadmap
 
-Never commit a service-role key.
-
-## Database
-
-1. Run original [`schema.sql`](./schema.sql) on a **development** Supabase project.
-2. Review [`backend/supabase/scripts/review_duplicate_friendships.sql`](./backend/supabase/scripts/review_duplicate_friendships.sql).
-3. Apply migrations in [`backend/supabase/migrations/`](./backend/supabase/migrations/) **on dev first**.
-4. Ghost Mode enforcement lives in `202608300002_ghost_mode_locations.sql` (`friend_locations` view).
-
-The legacy single-file app is preserved at [`legacy/index.html`](./legacy/index.html).
-
-## Features ported from legacy
-
-- Sign up / sign in / profile completion
-- Friend search, requests, accept/decline, invite links (`?add=username`)
-- Live location + Realtime updates
-- 1:1 chat and waves
-- Status cycling
-- Share self (add-friend card) vs share friend (friend detail card)
-- Preview mode with demo data
-- Ghost Mode UI + server-side masking (after migration)
-
-## Live demo
-
-https://william101102.github.io/zenly-app/
+The browser cannot provide dependable background location or native push notifications.
+Those features will be delivered by a React Native/Expo mobile client against this same backend.
