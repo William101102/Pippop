@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Pinpop</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap" />
+<style>
+  :root{
+    --ink:#2c2b34; --ink-soft:#7c7b86; --coral:#ff6f61; --coral-deep:#ff5470;
+    --bg-a:#fff5f0; --bg-b:#f3eee9; --bg-c:#ece7e1;
+    --card:#ffffff; --line:#eeeeea; --muted:#f1f2ed;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg-c); }
+  body{ font-family:'Nunito', system-ui, sans-serif; color:var(--ink); }
+  button{ font-family:inherit; }
+  input:focus, button:focus-visible{ outline:2px solid var(--coral); outline-offset:2px; }
+
+  .stage{
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:14px; padding:24px;
+    background:radial-gradient(120% 120% at 50% 0%, var(--bg-a) 0%, var(--bg-b) 55%, var(--bg-c) 100%);
+  }
+  .caption{ color:#9a938c; font-size:13px; font-weight:600; margin:0; }
+
+  .authCard{
+    width:min(360px, 94vw); background:var(--card); border-radius:28px; padding:30px 26px;
+    box-shadow:0 24px 60px rgba(44,43,52,.16); display:flex; flex-direction:column; gap:16px;
+  }
+  .authLogo{ font-family:'Fredoka'; font-weight:700; font-size:26px; text-align:center; }
+  .authLogo span{ color:var(--coral); }
+  .authSub{ text-align:center; color:var(--ink-soft); font-size:13.5px; margin-top:-10px; }
+  .authTabs{ display:flex; background:var(--muted); border-radius:14px; padding:4px; gap:4px; }
+  .authTab{ flex:1; border:none; background:none; padding:9px; border-radius:11px; font-weight:800;
+    font-size:14px; color:var(--ink-soft); cursor:pointer; }
+  .authTab.active{ background:#fff; color:var(--ink); box-shadow:0 3px 10px rgba(44,43,52,.1); }
+  .authField{ display:flex; flex-direction:column; gap:5px; }
+  .authField label{ font-size:12.5px; font-weight:700; color:var(--ink-soft); }
+  .authField input{ border:1.5px solid var(--line); background:#fbfbf9; border-radius:13px;
+    padding:11px 13px; font-size:14.5px; font-weight:600; color:var(--ink); }
+  .authField input::placeholder{ color:#b8b7bd; font-weight:600; }
+  .authBtn{ border:none; background:var(--coral); color:#fff; font-weight:800; font-size:15px;
+    padding:13px; border-radius:15px; cursor:pointer; box-shadow:0 10px 22px rgba(255,111,97,.35); }
+  .authBtn:hover{ background:var(--coral-deep); }
+  .authBtn:disabled{ opacity:.6; cursor:default; }
+  .authError{ background:#fff1ee; color:#c8503f; border-radius:12px; padding:10px 12px;
+    font-size:13px; font-weight:700; line-height:1.4; display:none; }
+  .authHint{ font-size:12px; color:var(--ink-soft); line-height:1.5; text-align:center; }
+
+  .phoneStage{
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; padding:20px; box-sizing:border-box;
+    background:radial-gradient(120% 120% at 50% 0%, var(--bg-a) 0%, var(--bg-b) 55%, var(--bg-c) 100%);
+  }
+  .phone{ width:min(390px, 96vw); height:min(800px, 94vh); border-radius:46px; padding:9px;
+    background:linear-gradient(160deg,#3a3942,#1f1e24);
+    box-shadow:0 30px 70px rgba(44,43,52,.4), inset 0 0 0 2px rgba(255,255,255,.06); }
+  .screen{ position:relative; width:100%; height:100%; border-radius:38px; overflow:hidden; background:#e9f2ea; }
+  @media (max-width:480px){
+    .phoneStage{ padding:0; }
+    .phone{ width:100vw; height:100vh; border-radius:0; padding:0; box-shadow:none; background:none; }
+    .screen{ border-radius:0; }
+  }
+  #map{ position:absolute; inset:0; z-index:1; }
+  .leaflet-control-attribution{ font-size:9px !important; }
+  .leaflet-marker-bubble{ background:transparent !important; border:none !important; }
+
+  .locateBtn{
+    position:absolute; right:14px; bottom:150px; z-index:26;
+    width:42px; height:42px; border-radius:50%; border:none;
+    background:rgba(255,255,255,.94); color:var(--ink); font-size:20px; font-weight:700;
+    cursor:pointer; box-shadow:0 6px 16px rgba(44,43,52,.18);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .locateBtn:hover{ background:#fff; }
+
+  .topbar{ position:absolute; top:16px; left:14px; right:14px; z-index:25;
+    display:flex; justify-content:space-between; align-items:center; }
+  .chip{ display:flex; align-items:center; gap:7px; background:rgba(255,255,255,.92);
+    padding:6px 13px 6px 6px; border-radius:22px; font-family:'Fredoka'; font-size:15px;
+    box-shadow:0 6px 16px rgba(44,43,52,.14); backdrop-filter:blur(6px); border:none; cursor:pointer; }
+  .chip:hover{ background:#fff; }
+  .meMini{ width:28px; height:28px; border-radius:50%; background:var(--coral); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  .iconBtn{ width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,.92);
+    color:var(--ink); font-size:24px; font-weight:600; cursor:pointer; box-shadow:0 6px 16px rgba(44,43,52,.14);
+    line-height:1; display:flex; align-items:center; justify-content:center; padding-bottom:3px; }
+  .iconBtn:hover{ background:#fff; }
+
+  .mapBubble{ display:flex; flex-direction:column; align-items:center; pointer-events:none; }
+  .avatar{ width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-family:'Fredoka'; font-weight:700; font-size:18px; position:relative; border-width:3px; border-style:solid; }
+  .actPip{ position:absolute; bottom:-4px; right:-6px; font-size:13px; background:#fff; border-radius:50%;
+    width:21px; height:21px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+  .bubbleTail{ width:0; height:0; border-left:7px solid transparent; border-right:7px solid transparent;
+    border-top:9px solid; margin-top:-2px; filter:drop-shadow(0 3px 2px rgba(44,43,52,.15)); }
+  .mapBubbleMe{ position:relative; }
+  .meRing{ position:absolute; top:22px; left:50%; width:44px; height:44px; transform:translate(-50%,-50%);
+    border-radius:50%; background:var(--coral); animation:ring 2.2s ease-out infinite; }
+  @keyframes ring{ 0%{ transform:translate(-50%,-50%) scale(1); opacity:.5; } 100%{ transform:translate(-50%,-50%) scale(3.2); opacity:0; } }
+
+  .waveToast{ position:absolute; top:70px; left:50%; transform:translateX(-50%); z-index:70;
+    background:rgba(44,43,52,.92); color:#fff; padding:11px 18px; border-radius:22px; font-weight:700;
+    font-size:13.5px; display:none; align-items:center; gap:8px; box-shadow:0 10px 26px rgba(44,43,52,.3);
+    max-width:80%; text-align:center; }
+
+  .detailCard{ position:absolute; left:14px; right:14px; bottom:96px; z-index:35; background:rgba(255,255,255,.97);
+    border-radius:26px; padding:16px; box-shadow:0 18px 44px rgba(44,43,52,.22); backdrop-filter:blur(10px);
+    display:none; flex-direction:column; gap:13px; }
+  .cardClose{ position:absolute; top:12px; right:14px; border:none; background:none; font-size:22px;
+    color:var(--ink-soft); cursor:pointer; line-height:1; }
+  .cardTop{ display:flex; gap:12px; align-items:center; }
+  .cardAvatar{ width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-family:'Fredoka'; font-weight:700; font-size:21px; flex-shrink:0; border-width:3px; border-style:solid; }
+  .cardName{ font-weight:700; font-size:17px; }
+  .cardSub{ color:var(--ink-soft); font-size:12.5px; margin-top:2px; }
+  .statRow{ display:flex; align-items:center; background:var(--muted); border-radius:16px; padding:12px 4px; }
+  .stat{ flex:1; text-align:center; }
+  .statValue{ font-weight:700; font-size:14.5px; }
+  .statLabel{ color:var(--ink-soft); font-size:11px; margin-top:2px; }
+  .statDivider{ width:1px; height:26px; background:#e2e3de; }
+  .cardActions{ display:flex; gap:8px; }
+  .pill{ flex:1; border:none; border-radius:16px; padding:12px; font-weight:800; font-size:14.5px; cursor:pointer; }
+  .pillGhost{ background:var(--muted); color:var(--ink); }
+  .pillGhost:hover{ background:#e7e8e3; }
+  .pillSolid{ background:var(--coral); color:#fff; box-shadow:0 6px 16px rgba(255,111,97,.35); }
+  .pillSolid:hover{ background:var(--coral-deep); }
+  .signOutLink{ border:none; background:none; color:var(--ink-soft); font-size:12.5px; font-weight:700;
+    text-decoration:underline; cursor:pointer; padding:0; }
+  .lockNote{ font-size:11px; color:var(--ink-soft); text-align:center; }
+
+  .sheet{ position:absolute; left:0; right:0; bottom:0; height:360px; z-index:20; background:#fff;
+    border-radius:28px 28px 0 0; box-shadow:0 -10px 34px rgba(44,43,52,.16); display:flex; flex-direction:column; }
+  .dragZone{ padding-top:12px; cursor:grab; touch-action:none; user-select:none; }
+  .dragZone:active{ cursor:grabbing; }
+  .handleBar{ display:block; width:42px; height:5px; border-radius:3px; background:#dcdde0; margin:0 auto 6px; }
+  .dragZone:active .handleBar{ background:#c4c5c9; }
+  .sheetHeader{ padding:4px 18px; display:flex; justify-content:space-between; align-items:baseline; }
+  .sheetTitle{ font-weight:700; font-size:16px; }
+  .sheetCount{ color:var(--ink-soft); font-size:12px; }
+  .sheetList{ padding:4px 12px 20px; overflow-y:auto; flex:1; }
+  .row{ width:100%; display:flex; align-items:center; gap:12px; padding:10px; border:none; border-radius:18px;
+    cursor:pointer; background:transparent; text-align:left; }
+  .row:hover{ background:#f5f6f2; }
+  .rowAvatar{ width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-family:'Fredoka'; font-weight:700; font-size:16px; flex-shrink:0; border-width:2.5px; border-style:solid; }
+  .rowBody{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .rowName{ font-weight:700; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rowTag{ font-size:11px; color:var(--coral); font-weight:700; }
+  .rowSub{ color:var(--ink-soft); font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rowMeta{ font-size:11px; color:var(--ink-soft); flex-shrink:0; }
+  .rowDivider{ height:1px; background:#f0f0ec; margin:6px 10px 8px; }
+  .sectionLabel{ font-size:11.5px; color:var(--ink-soft); font-weight:700; margin:8px 10px 4px; }
+  .requestRow{ display:flex; align-items:center; gap:10px; padding:8px 10px; }
+  .tinyBtn{ border:none; border-radius:11px; padding:7px 11px; font-weight:800; font-size:12.5px; cursor:pointer; flex-shrink:0; }
+  .tinyBtnGhost{ background:var(--muted); color:var(--ink-soft); }
+  .tinyBtnSolid{ background:var(--coral); color:#fff; }
+  .emptyHint{ text-align:center; color:var(--ink-soft); font-size:13px; padding:26px 10px; line-height:1.6; }
+
+  .overlay{ position:absolute; inset:0; z-index:60; background:#fbfbf9; display:flex; flex-direction:column;
+    transform:translateY(100%); transition:transform .34s cubic-bezier(.3,.9,.3,1); }
+  .overlayHead{ display:flex; align-items:center; gap:11px; padding:18px 16px 12px; border-bottom:1px solid #efefe9; background:#fff; }
+  .backBtn{ border:none; background:var(--muted); width:34px; height:34px; border-radius:50%; font-size:24px;
+    cursor:pointer; color:var(--ink); display:flex; align-items:center; justify-content:center; line-height:1;
+    padding-bottom:3px; flex-shrink:0; }
+  .backBtn:hover{ background:#e7e8e3; }
+  .overlayTitle{ font-weight:700; font-size:16px; }
+
+  .thread{ flex:1; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:8px; }
+  .msg{ max-width:76%; padding:10px 14px; border-radius:20px; font-size:14.5px; line-height:1.35; font-weight:600; }
+  .msgThem{ align-self:flex-start; border-bottom-left-radius:6px; }
+  .msgMe{ align-self:flex-end; background:var(--coral); color:#fff; border-bottom-right-radius:6px; }
+  .inputBar{ display:flex; gap:8px; padding:8px 12px 18px; align-items:center; border-top:1px solid #efefe9; background:#fff; }
+  .chatInput{ flex:1; border:1.5px solid var(--line); background:var(--muted); border-radius:22px; padding:12px 16px;
+    font-size:14.5px; font-weight:600; outline:none; color:var(--ink); }
+  .chatInput::placeholder{ color:#b4b3bb; }
+  .sendBtn{ width:42px; height:42px; border-radius:50%; border:none; background:var(--coral); color:#fff;
+    font-size:20px; font-weight:700; cursor:pointer; flex-shrink:0; box-shadow:0 6px 14px rgba(255,111,97,.35); }
+  .sendBtn:hover{ background:var(--coral-deep); }
+
+  .myIdCard{ display:flex; justify-content:space-between; align-items:center; background:rgba(255,111,97,.07);
+    border:1.5px dashed rgba(255,111,97,.4); border-radius:18px; padding:12px 16px; margin-bottom:14px;
+    width:100%; cursor:pointer; text-align:left; font-family:inherit; }
+  .myIdCard:hover{ background:rgba(255,111,97,.12); }
+  .myIdLabel{ font-size:11.5px; color:var(--ink-soft); }
+  .myIdValue{ font-weight:700; font-family:'Fredoka'; font-size:17px; }
+  .searchBar{ display:flex; align-items:center; gap:8px; background:var(--muted); border-radius:16px; padding:11px 14px; }
+  .searchInput{ flex:1; border:none; background:none; outline:none; font-size:14.5px; font-weight:600; color:var(--ink); }
+  .searchInput::placeholder{ color:#b4b3bb; }
+  .resultsLabel{ font-size:12px; color:var(--ink-soft); margin:16px 4px 6px; }
+  .resultRow{ display:flex; align-items:center; gap:12px; padding:9px 6px; }
+  .addBtn{ border:none; background:var(--coral); color:#fff; font-weight:800; font-size:13px; padding:8px 15px;
+    border-radius:14px; cursor:pointer; flex-shrink:0; }
+  .addBtn:hover{ background:var(--coral-deep); }
+  .addBtnDone{ background:#eceded; color:#9a9aa2; font-weight:800; font-size:13px; padding:8px 15px; border-radius:14px; display:inline-block; }
+
+  .completeCard{ display:flex; flex-direction:column; gap:14px; }
+</style>
+</head>
+<body>
+
+<div id="authView" class="stage">
+  <div class="authCard">
+    <div class="authLogo">Pin<span>pop</span></div>
+    <div class="authSub">See where your friends are, right now</div>
+    <div class="authTabs">
+      <button class="authTab active" id="tabSignIn" onclick="switchTab('signin')">登录</button>
+      <button class="authTab" id="tabSignUp" onclick="switchTab('signup')">注册</button>
+    </div>
+
+    <div id="signinForm">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="authField">
+          <label>邮箱</label>
+          <input type="email" id="siEmail" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="authField">
+          <label>密码</label>
+          <input type="password" id="siPassword" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <button class="authBtn" id="siBtn" onclick="doSignIn()">登录</button>
+      </div>
+    </div>
+
+    <div id="signupForm" style="display:none;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="authField">
+          <label>邮箱</label>
+          <input type="email" id="suEmail" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="authField">
+          <label>密码</label>
+          <input type="password" id="suPassword" placeholder="至少 6 位" autocomplete="new-password" />
+        </div>
+        <div class="authField">
+          <label>你的 ID（好友靠这个加你，只能小写字母/数字/下划线）</label>
+          <input type="text" id="suUsername" placeholder="例如 xiaoming_01" autocomplete="off" />
+        </div>
+        <div class="authField">
+          <label>昵称</label>
+          <input type="text" id="suDisplayName" placeholder="好友会看到的名字" autocomplete="off" />
+        </div>
+        <button class="authBtn" id="suBtn" onclick="doSignUp()">注册</button>
+      </div>
+    </div>
+
+    <div class="authError" id="authError"></div>
+    <div class="authHint">新用户请先在「注册」创建账号；已有账号再用「登录」。</div>
+  </div>
+</div>
+
+<div id="completeView" class="stage" style="display:none;">
+  <div class="authCard">
+    <div class="authLogo">Pin<span>pop</span></div>
+    <div class="authSub">Pick your ID and display name</div>
+    <div class="completeCard">
+      <div class="authField">
+        <label>你的 ID</label>
+        <input type="text" id="cpUsername" placeholder="例如 xiaoming_01" autocomplete="off" />
+      </div>
+      <div class="authField">
+        <label>昵称</label>
+        <input type="text" id="cpDisplayName" placeholder="好友会看到的名字" autocomplete="off" />
+      </div>
+      <button class="authBtn" id="cpBtn" onclick="doCompleteProfile()">Open Pinpop</button>
+      <div class="authError" id="cpError"></div>
+    </div>
+  </div>
+</div>
+
+<div id="appView" class="phoneStage" style="display:none;">
+  <div class="phone">
+    <div class="screen">
+      <div id="map"></div>
+      <button class="locateBtn" id="locateBtn" onclick="focusOnMe()" title="定位到我">◎</button>
+
+      <div class="topbar">
+        <button class="chip" onclick="openMe()">
+          <span class="meMini" id="meMiniAvatar">我</span>
+          <span>Pinpop</span>
+        </button>
+        <button class="iconBtn" onclick="openAdd()">＋</button>
+      </div>
+
+      <div class="waveToast" id="toast"></div>
+      <div class="detailCard" id="detailCard"></div>
+
+      <div class="sheet" id="sheet">
+        <div class="dragZone" id="dragZone">
+          <span class="handleBar"></span>
+          <div class="sheetHeader">
+            <span class="sheetTitle">好友</span>
+            <span class="sheetCount" id="sheetCount">0 位好友</span>
+          </div>
+        </div>
+        <div class="sheetList" id="sheetList"></div>
+      </div>
+
+      <div class="overlay" id="chatOverlay">
+        <div class="overlayHead">
+          <button class="backBtn" onclick="closeChat()">‹</button>
+          <span class="rowAvatar" id="chatHeadAvatar"></span>
+          <div>
+            <div class="overlayTitle" id="chatHeadName"></div>
+            <div class="cardSub" id="chatHeadSub"></div>
+          </div>
+        </div>
+        <div class="thread" id="thread"></div>
+        <div class="inputBar">
+          <input class="chatInput" id="chatInput" placeholder="发条消息…" />
+          <button class="sendBtn" onclick="sendMsg()">↑</button>
+        </div>
+      </div>
+
+      <div class="overlay" id="addOverlay">
+        <div class="overlayHead">
+          <button class="backBtn" onclick="closeAdd()">‹</button>
+          <div class="overlayTitle">添加好友</div>
+        </div>
+        <div style="padding:14px 16px; flex:1; overflow-y:auto;">
+          <button type="button" class="myIdCard" onclick="shareInvite()">
+            <div>
+              <div class="myIdLabel">你的 ID</div>
+              <div class="myIdValue" id="myIdText">@me</div>
+            </div>
+            <span style="font-size:12px;color:var(--coral);font-weight:700;">分享给朋友 →</span>
+          </button>
+          <div class="searchBar">
+            <span style="font-size:16px;">🔍</span>
+            <input class="searchInput" id="searchInput" placeholder="输入好友 ID 或名字" oninput="onSearchInput()" />
+          </div>
+          <div class="resultsLabel" id="resultsLabel">推荐好友</div>
+          <div id="resultsList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="caption">按住底部往上滑，拉出好友列表 · 点好友看详情</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://nzqgkbibuqnfbxfarswu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56cWdrYmlidXFuZmJ4ZmFyc3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwMzg0NzgsImV4cCI6MjEwMzYxNDQ3OH0.olf2ccc_Y7yQj96Ls3BJja-jyJsr3YzUL2UXGFriApU";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const STATUSES = [
+  { emoji: "🏠", text: "在家" },
+  { emoji: "💼", text: "工作中" },
+  { emoji: "🍔", text: "吃饭中" },
+  { emoji: "🎧", text: "放松中" },
+  { emoji: "🚶", text: "散步中" },
+];
+const PALETTE = [
+  { ring: "#ff77a9", tint: "#ffe3ee" },
+  { ring: "#8b7cf6", tint: "#e9e5ff" },
+  { ring: "#25c9b7", tint: "#d7f6f1" },
+  { ring: "#ffb03a", tint: "#fff0d4" },
+  { ring: "#5ac8e0", tint: "#d6f2f9" },
+  { ring: "#9b8cff", tint: "#e9e5ff" },
+  { ring: "#43c9a0", tint: "#d6f6ec" },
+  { ring: "#ff9f45", tint: "#ffe9d1" },
+];
+const ME_COLOR = { ring: "#ff6f61", tint: "#ffe1dc" };
+const COLLAPSED = 220;
+const MAP_FOCUS_ZOOM = 16;
+const SHEET_OFFSET_PX = 150;
+
+const state = {
+  me: null,
+  friends: [],
+  requests: [],
+  sentIds: new Set(),
+  markers: {},
+  selfMarker: null,
+  map: null,
+  selectedId: null,
+  chatWith: null,
+  threads: {},
+  myLat: null,
+  myLng: null,
+  searchQuery: "",
+  searchResults: [],
+  toastTimer: null,
+  watchId: null,
+  channel: null,
+};
+let expanded = false;
+let dragState = { active: false, startY: 0, base: 0, moved: 0 };
+let searchDebounce = null;
+
+function $(sel) { return document.querySelector(sel); }
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function colorFor(username) {
+  let h = 0;
+  for (const c of String(username)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+function tintFor(ring) {
+  const found = PALETTE.find((p) => p.ring.toLowerCase() === String(ring).toLowerCase());
+  return found ? found.tint : "#f1f1f1";
+}
+function colorForProfile(p) {
+  return p && p.avatar_color ? { ring: p.avatar_color, tint: tintFor(p.avatar_color) } : colorFor((p && p.username) || "x");
+}
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function fmtDist(km) {
+  if (km < 1) return Math.round(km * 1000) + " m";
+  return km.toFixed(1) + " km";
+}
+function timeAgo(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "刚刚";
+  if (s < 3600) return Math.floor(s / 60) + " 分钟前";
+  if (s < 86400) return Math.floor(s / 3600) + " 小时前";
+  return Math.floor(s / 86400) + " 天前";
+}
+function showToast(text) {
+  const el = $("#toast");
+  el.textContent = text;
+  el.style.display = "flex";
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => { el.style.display = "none"; }, 3200);
+}
+
+function switchTab(tab) {
+  $("#tabSignIn").classList.toggle("active", tab === "signin");
+  $("#tabSignUp").classList.toggle("active", tab === "signup");
+  $("#signinForm").style.display = tab === "signin" ? "block" : "none";
+  $("#signupForm").style.display = tab === "signup" ? "block" : "none";
+  setAuthError("");
+}
+function setAuthError(msg) {
+  const el = $("#authError");
+  el.textContent = msg;
+  el.style.display = msg ? "block" : "none";
+}
+function setAuthBusy(busy) {
+  $("#siBtn").disabled = busy;
+  $("#suBtn").disabled = busy;
+}
+async function doSignIn() {
+  const email = $("#siEmail").value.trim();
+  const password = $("#siPassword").value;
+  setAuthError("");
+  if (!email || !password) { setAuthError("请填写邮箱和密码"); return; }
+  setAuthBusy(true);
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    setAuthBusy(false);
+    setAuthError(error.message === "Invalid login credentials" ? "邮箱或密码不对，没有账号请先注册" : error.message);
+    return;
+  }
+  const { data: prof } = await sb.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  if (!prof) {
+    await sb.auth.signOut();
+    setAuthBusy(false);
+    switchTab("signup");
+    $("#suEmail").value = email;
+    setAuthError("这个邮箱还没注册，请先在「注册」里创建账号");
+    return;
+  }
+  setAuthBusy(false);
+  await bootApp(data.session);
+}
+async function doSignUp() {
+  const email = $("#suEmail").value.trim();
+  const password = $("#suPassword").value;
+  const username = $("#suUsername").value.trim().toLowerCase();
+  const displayName = $("#suDisplayName").value.trim() || username;
+  setAuthError("");
+  if (!email || !password || !username) { setAuthError("请填写邮箱、密码和 ID"); return; }
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) { setAuthError("ID 只能用小写字母、数字、下划线，3-20 位"); return; }
+  if (password.length < 6) { setAuthError("密码至少 6 位"); return; }
+  setAuthBusy(true);
+  const { data: taken } = await sb.from("profiles").select("id").eq("username", username).maybeSingle();
+  if (taken) { setAuthBusy(false); setAuthError("这个 ID 已经被占用了，换一个试试"); return; }
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) { setAuthBusy(false); setAuthError(error.message); return; }
+  if (!data.session) {
+    setAuthBusy(false);
+    setAuthError("注册成功！请去邮箱点确认链接后再登录（或在 Supabase 后台关掉邮箱确认方便测试）。");
+    switchTab("signin");
+    $("#siEmail").value = email;
+    return;
+  }
+  const color = colorFor(username);
+  const { error: profErr } = await sb.from("profiles").insert({
+    id: data.user.id, username, display_name: displayName, avatar_color: color.ring,
+  });
+  setAuthBusy(false);
+  if (profErr) {
+    await sb.auth.signOut();
+    setAuthError(profErr.code === "23505" ? "这个 ID 已经被占用了，换一个试试" : profErr.message);
+    return;
+  }
+  showToast("注册成功，欢迎加入 Pinpop 🎉");
+  await bootApp(data.session);
+}
+async function doCompleteProfile() {
+  const username = $("#cpUsername").value.trim().toLowerCase();
+  const displayName = $("#cpDisplayName").value.trim() || username;
+  const el = $("#cpError");
+  el.style.display = "none";
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) { el.textContent = "ID 只能用小写字母、数字、下划线，3-20 位"; el.style.display = "block"; return; }
+  const { data: sessionData } = await sb.auth.getSession();
+  const uid = sessionData.session.user.id;
+  const color = colorFor(username);
+  const { error } = await sb.from("profiles").insert({ id: uid, username, display_name: displayName, avatar_color: color.ring });
+  if (error) { el.textContent = error.code === "23505" ? "这个 ID 已经被占用了，换一个试试" : error.message; el.style.display = "block"; return; }
+  await bootApp(sessionData.session);
+}
+async function signOut() {
+  if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
+  if (state.channel) sb.removeChannel(state.channel);
+  await sb.auth.signOut();
+  location.reload();
+}
+
+async function bootApp(session) {
+  const { data: prof } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+  if (!prof) {
+    $("#authView").style.display = "none";
+    $("#completeView").style.display = "flex";
+    return;
+  }
+  state.me = prof;
+  $("#authView").style.display = "none";
+  $("#completeView").style.display = "none";
+  $("#appView").style.display = "flex";
+  $("#myIdText").textContent = "@" + prof.username;
+  updateMeChip();
+  initMap();
+  initSheetDrag();
+  await loadMyLastLocation();
+  startGeolocation();
+  await loadFriendsAndRequests();
+  subscribeRealtime();
+  handleInviteLink();
+}
+
+function inviteUrl(username) {
+  const base = location.origin + location.pathname;
+  return base + "?add=" + encodeURIComponent(username || state.me.username);
+}
+
+function inviteText() {
+  const name = state.me.display_name || state.me.username;
+  return "加我 Pinpop 好友 @" + state.me.username + "（" + name + "）\n" + inviteUrl();
+}
+
+function friendShareText(f) {
+  const name = f.display_name || f.username;
+  return "推荐你在 Pinpop 上加我的好友 @" + f.username + "（" + name + "）\n" + inviteUrl(f.username);
+}
+
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(okMsg);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    showToast(okMsg);
+  }
+}
+
+async function shareInvite() {
+  if (!state.me) return;
+  const url = inviteUrl();
+  const text = inviteText();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Pinpop 好友邀请", text: text, url: url });
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+    }
+  }
+  copyText(text, "邀请链接已复制，发给朋友吧！");
+}
+
+async function shareFriend(friendId) {
+  const f = state.friends.find((x) => x.id === friendId);
+  if (!f) return;
+  const url = inviteUrl(f.username);
+  const text = friendShareText(f);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Pinpop 推荐好友", text: text, url: url });
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+    }
+  }
+  copyText(text, "已复制，发给其他好友吧！");
+}
+
+function handleInviteLink() {
+  const add = new URLSearchParams(location.search).get("add");
+  if (!add || !state.me) return;
+  const username = add.replace(/^@/, "").trim().toLowerCase();
+  if (!username || username === state.me.username) {
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  openAdd();
+  $("#searchInput").value = username;
+  state.searchQuery = username;
+  runSearch().then(() => {
+    if (username !== state.me.username) showToast("朋友分享来的邀请，点「＋ 添加」加好友");
+  });
+  history.replaceState({}, "", location.pathname);
+}
+
+async function loadMyLastLocation() {
+  const { data } = await sb.from("locations").select("lat,lng").eq("user_id", state.me.id).maybeSingle();
+  if (data) updateSelfMarker(data.lat, data.lng, { focus: state.myLat == null });
+}
+
+function focusMapOn(lat, lng, zoom) {
+  if (!state.map || lat == null || lng == null) return;
+  const z = zoom != null ? zoom : (state.map.getZoom() < 14 ? MAP_FOCUS_ZOOM : state.map.getZoom());
+  const pt = state.map.project(L.latLng(lat, lng), z);
+  pt.y += SHEET_OFFSET_PX;
+  state.map.flyTo(state.map.unproject(pt, z), z, { animate: true, duration: 0.65 });
+}
+
+function focusOnMe() {
+  if (state.myLat == null || state.myLng == null) {
+    showToast("正在获取你的位置…请允许定位权限");
+    return;
+  }
+  focusMapOn(state.myLat, state.myLng);
+}
+
+function focusOnFriend(id) {
+  const f = state.friends.find((x) => x.id === id);
+  if (!f || !f.loc) {
+    showToast("好友暂无定位");
+    return;
+  }
+  focusMapOn(f.loc.lat, f.loc.lng);
+}
+
+function initMap() {
+  state.map = L.map("map", { zoomControl: false, attributionControl: true }).setView([31.23, 121.47], 4);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap",
+  }).addTo(state.map);
+  setTimeout(() => state.map && state.map.invalidateSize(), 300);
+  setTimeout(() => state.map && state.map.invalidateSize(), 900);
+}
+function bubbleIcon({ initial, emoji, ring, tint, isMe }) {
+  return L.divIcon({
+    className: "leaflet-marker-bubble",
+    html:
+      '<div class="mapBubble' + (isMe ? " mapBubbleMe" : "") + '">' +
+        (isMe ? '<span class="meRing"></span>' : "") +
+        '<span class="avatar" style="background:' + tint + ";color:" + ring + ";border-color:" + ring + '">' +
+          esc(initial) + '<span class="actPip">' + esc(emoji || "📍") + "</span>" +
+        "</span>" +
+        '<span class="bubbleTail" style="border-top-color:' + ring + '"></span>' +
+      "</div>",
+    iconSize: [46, 66],
+    iconAnchor: [23, 66],
+  });
+}
+function updateSelfMarker(lat, lng, opts) {
+  opts = opts || {};
+  const first = (state.me.display_name || state.me.username || "我").slice(0, 1);
+  const icon = bubbleIcon({ initial: first, emoji: state.me.status_emoji, ring: ME_COLOR.ring, tint: ME_COLOR.tint, isMe: true });
+  const firstFix = state.myLat == null;
+  state.myLat = lat;
+  state.myLng = lng;
+  if (!state.selfMarker) {
+    state.selfMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(state.map).on("click", () => openMe());
+  } else {
+    state.selfMarker.setLatLng([lat, lng]);
+    state.selfMarker.setIcon(icon);
+  }
+  if (opts.focus || firstFix) focusMapOn(lat, lng);
+  renderSheetList();
+  if (state.selectedId === "me") renderDetailCard();
+}
+function renderFriendMarkers() {
+  const seen = new Set();
+  for (const f of state.friends) {
+    seen.add(f.id);
+    if (!f.loc) continue;
+    const color = colorForProfile(f);
+    const icon = bubbleIcon({ initial: (f.display_name || f.username).slice(0, 1), emoji: f.status_emoji, ring: color.ring, tint: color.tint, isMe: false });
+    if (state.markers[f.id]) {
+      state.markers[f.id].setLatLng([f.loc.lat, f.loc.lng]);
+      state.markers[f.id].setIcon(icon);
+    } else {
+      state.markers[f.id] = L.marker([f.loc.lat, f.loc.lng], { icon }).addTo(state.map).on("click", () => {
+        state.selectedId = f.id;
+        collapseSheet();
+        renderDetailCard();
+        focusMapOn(f.loc.lat, f.loc.lng);
+      });
+    }
+  }
+  for (const id of Object.keys(state.markers)) {
+    if (!seen.has(id)) {
+      state.map.removeLayer(state.markers[id]);
+      delete state.markers[id];
+    }
+  }
+}
+
+function startGeolocation() {
+  if (!navigator.geolocation) { showToast("这个浏览器不支持定位"); return; }
+  state.watchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      updateSelfMarker(lat, lng);
+      await sb.from("locations").upsert(
+        { user_id: state.me.id, lat, lng, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+    },
+    (err) => showToast("定位失败：" + err.message + "（请允许浏览器定位权限）"),
+    { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 }
+  );
+}
+
+async function loadFriendsAndRequests() {
+  const meId = state.me.id;
+  const { data: rels } = await sb.from("friendships").select("*").or(`requester_id.eq.${meId},addressee_id.eq.${meId}`);
+  const all = rels || [];
+  const accepted = all.filter((r) => r.status === "accepted");
+  const incoming = all.filter((r) => r.status === "pending" && r.addressee_id === meId);
+  const outgoing = all.filter((r) => r.status === "pending" && r.requester_id === meId);
+  state.sentIds = new Set(outgoing.map((r) => r.addressee_id));
+
+  state.requests = [];
+  if (incoming.length) {
+    const reqIds = incoming.map((r) => r.requester_id);
+    const { data: reqProfiles } = await sb.from("profiles").select("*").in("id", reqIds);
+    state.requests = incoming
+      .map((r) => ({ relId: r.id, profile: (reqProfiles || []).find((p) => p.id === r.requester_id) }))
+      .filter((x) => x.profile);
+  }
+
+  const friendIds = accepted.map((r) => (r.requester_id === meId ? r.addressee_id : r.requester_id));
+  let profiles = [], locations = [];
+  if (friendIds.length) {
+    const [{ data: p }, { data: l }] = await Promise.all([
+      sb.from("profiles").select("*").in("id", friendIds),
+      sb.from("locations").select("*").in("user_id", friendIds),
+    ]);
+    profiles = p || [];
+    locations = l || [];
+  }
+  state.friends = profiles.map((p) => ({ ...p, loc: locations.find((l) => l.user_id === p.id) || null }));
+  renderFriendMarkers();
+  renderSheetList();
+}
+
+async function respondRequest(relId, status) {
+  await sb.from("friendships").update({ status }).eq("id", relId);
+  await loadFriendsAndRequests();
+}
+async function sendRequest(targetId) {
+  state.sentIds.add(targetId);
+  renderSearchResults();
+  const { error } = await sb.from("friendships").insert({ requester_id: state.me.id, addressee_id: targetId });
+  if (error) {
+    state.sentIds.delete(targetId);
+    renderSearchResults();
+    showToast("发送失败：" + error.message);
+  }
+}
+
+function subscribeRealtime() {
+  const meId = state.me.id;
+  state.channel = sb
+    .channel("app-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "locations" }, (payload) => {
+      const row = payload.new || payload.old;
+      if (!row || row.user_id === meId) return;
+      const f = state.friends.find((x) => x.id === row.user_id);
+      if (f) {
+        f.loc = payload.new || null;
+        renderFriendMarkers();
+        renderSheetList();
+        if (state.selectedId === row.user_id) renderDetailCard();
+      }
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, () => {
+      loadFriendsAndRequests();
+    })
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+      const m = payload.new;
+      if (m.recipient_id === meId) {
+        state.threads[m.sender_id] = [...(state.threads[m.sender_id] || []), m];
+        if (state.chatWith === m.sender_id) renderChat();
+        else showToast((nameFor(m.sender_id) || "好友") + "：" + m.body);
+      } else if (m.sender_id === meId && state.chatWith === m.recipient_id) {
+        loadThread(m.recipient_id);
+      }
+    })
+    .subscribe();
+}
+function nameFor(id) {
+  const f = state.friends.find((x) => x.id === id);
+  return f ? f.display_name || f.username : null;
+}
+
+function initSheetDrag() {
+  const zone = $("#dragZone");
+  applySheet(COLLAPSED, false);
+  zone.addEventListener("pointerdown", (e) => {
+    dragState = { active: true, startY: e.clientY, base: expanded ? 0 : COLLAPSED, moved: 0 };
+    zone.setPointerCapture(e.pointerId);
+  });
+  zone.addEventListener("pointermove", (e) => {
+    if (!dragState.active) return;
+    const dy = e.clientY - dragState.startY;
+    dragState.moved = Math.max(dragState.moved, Math.abs(dy));
+    applySheet(Math.min(COLLAPSED, Math.max(0, dragState.base + dy)), false);
+  });
+  const end = () => {
+    if (!dragState.active) return;
+    dragState.active = false;
+    const m = $("#sheet").style.transform.match(/translateY\(([-\d.]+)px\)/);
+    const cur = m ? parseFloat(m[1]) : dragState.base;
+    expanded = dragState.moved < 6 ? !expanded : cur < COLLAPSED / 2;
+    applySheet(expanded ? 0 : COLLAPSED, true);
+  };
+  zone.addEventListener("pointerup", end);
+  zone.addEventListener("pointercancel", end);
+}
+function applySheet(y, animate) {
+  const sheet = $("#sheet");
+  sheet.style.transition = animate ? "transform .34s cubic-bezier(.3,.9,.3,1)" : "none";
+  sheet.style.transform = "translateY(" + y + "px)";
+}
+function collapseSheet() { expanded = false; applySheet(COLLAPSED, true); }
+function expandSheet() { expanded = true; applySheet(0, true); }
+
+function updateMeChip() {
+  $("#meMiniAvatar").textContent = (state.me.display_name || state.me.username || "我").slice(0, 1);
+}
+function renderSheetList() {
+  const rows = [];
+  rows.push(
+    '<button class="row" onclick="openMe()" style="background:' + (state.selectedId === "me" ? ME_COLOR.tint : "transparent") + '">' +
+      '<span class="rowAvatar" style="background:' + ME_COLOR.tint + ";color:" + ME_COLOR.ring + ";border-color:" + ME_COLOR.ring + '">' +
+        esc((state.me.display_name || state.me.username).slice(0, 1)) + "</span>" +
+      '<span class="rowBody"><span class="rowName">我 <span class="rowTag">· 你自己</span></span>' +
+      '<span class="rowSub">' + esc(state.me.status_emoji || "") + " " + esc(state.me.status_text || "") + "</span></span>" +
+      '<span class="rowMeta" style="color:' + ME_COLOR.ring + '">在线</span>' +
+    "</button>" +
+    '<div class="rowDivider"></div>'
+  );
+
+  if (state.requests.length) {
+    rows.push('<div class="sectionLabel">好友请求 · ' + state.requests.length + "</div>");
+    for (const r of state.requests) {
+      const c = colorForProfile(r.profile);
+      rows.push(
+        '<div class="requestRow">' +
+          '<span class="rowAvatar" style="background:' + c.tint + ";color:" + c.ring + ";border-color:" + c.ring + '">' +
+            esc((r.profile.display_name || r.profile.username).slice(0, 1)) + "</span>" +
+          '<span class="rowBody"><span class="rowName">' + esc(r.profile.display_name || r.profile.username) + "</span>" +
+          '<span class="rowSub">@' + esc(r.profile.username) + " 想加你为好友</span></span>" +
+          '<button class="tinyBtn tinyBtnGhost" onclick="respondRequest(\'' + r.relId + "','declined')\">拒绝</button>" +
+          '<button class="tinyBtn tinyBtnSolid" onclick="respondRequest(\'' + r.relId + "','accepted')\">接受</button>" +
+        "</div>"
+      );
+    }
+    rows.push('<div class="rowDivider"></div>');
+  }
+
+  if (!state.friends.length) {
+    rows.push('<div class="emptyHint">还没有好友，点右上角 ＋ 去添加吧</div>');
+  }
+  for (const f of state.friends) {
+    const c = colorForProfile(f);
+    const dist = f.loc && state.myLat != null ? fmtDist(haversineKm(state.myLat, state.myLng, f.loc.lat, f.loc.lng)) : "—";
+    const seen = f.loc ? timeAgo(f.loc.updated_at) : "暂无定位";
+    rows.push(
+      '<button class="row" onclick="selectFriend(\'' + f.id + '\')" style="background:' + (state.selectedId === f.id ? c.tint : "transparent") + '">' +
+        '<span class="rowAvatar" style="background:' + c.tint + ";color:" + c.ring + ";border-color:" + c.ring + '">' +
+          esc((f.display_name || f.username).slice(0, 1)) + "</span>" +
+        '<span class="rowBody"><span class="rowName">' + esc(f.display_name || f.username) + "</span>" +
+        '<span class="rowSub">' + esc(f.status_emoji || "📍") + " " + esc(f.status_text || "") + " · " + dist + "</span></span>" +
+        '<span class="rowMeta">' + seen + "</span>" +
+      "</button>"
+    );
+  }
+  $("#sheetList").innerHTML = rows.join("");
+  $("#sheetCount").textContent = state.friends.length + " 位好友";
+}
+function selectFriend(id) {
+  state.selectedId = id;
+  expandSheet();
+  renderDetailCard();
+  focusOnFriend(id);
+}
+
+function openMe() {
+  state.selectedId = "me";
+  collapseSheet();
+  renderDetailCard();
+  focusOnMe();
+}
+function closeCard() {
+  state.selectedId = null;
+  renderDetailCard();
+}
+function renderDetailCard() {
+  const el = $("#detailCard");
+  if (!state.selectedId) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "flex";
+  if (state.selectedId === "me") {
+    const m = state.me;
+    el.innerHTML =
+      '<button class="cardClose" onclick="closeCard()">×</button>' +
+      '<div class="cardTop"><span class="cardAvatar" style="background:' + ME_COLOR.tint + ";color:" + ME_COLOR.ring + ";border-color:" + ME_COLOR.ring + '">' +
+        esc((m.display_name || m.username).slice(0, 1)) + "</span>" +
+        '<div><div class="cardName">' + esc(m.display_name || m.username) + "</div>" +
+        '<div class="cardSub">' + esc(m.status_emoji) + " " + esc(m.status_text) + " · @" + esc(m.username) + "</div></div></div>" +
+      '<div class="statRow"><div class="stat"><div class="statValue">' + esc(m.status_emoji) + " " + esc(m.status_text) + '</div><div class="statLabel">状态</div></div>' +
+      '<span class="statDivider"></span><div class="stat"><div class="statValue">' + esc(m.username) + '</div><div class="statLabel">你的 ID</div></div></div>' +
+      '<div class="cardActions"><button class="pill pillGhost" onclick="openAdd()">👥 加好友</button>' +
+      '<button class="pill pillSolid" onclick="cycleStatus()">✏️ 换状态</button></div>' +
+      '<button class="signOutLink" onclick="signOut()">退出登录</button>' +
+      '<div class="lockNote">🔒 只有好友能看到你的位置</div>';
+  } else {
+    const f = state.friends.find((x) => x.id === state.selectedId);
+    if (!f) { el.style.display = "none"; el.innerHTML = ""; return; }
+    const c = colorForProfile(f);
+    const dist = f.loc && state.myLat != null ? fmtDist(haversineKm(state.myLat, state.myLng, f.loc.lat, f.loc.lng)) : "—";
+    const seen = f.loc ? timeAgo(f.loc.updated_at) : "暂无定位";
+    el.innerHTML =
+      '<button class="cardClose" onclick="closeCard()">×</button>' +
+      '<div class="cardTop"><span class="cardAvatar" style="background:' + c.tint + ";color:" + c.ring + ";border-color:" + c.ring + '">' +
+        esc((f.display_name || f.username).slice(0, 1)) + "</span>" +
+        '<div><div class="cardName">' + esc(f.display_name || f.username) + "</div>" +
+        '<div class="cardSub">' + esc(f.status_emoji || "📍") + " " + esc(f.status_text || "") + " · @" + esc(f.username) + "</div></div></div>" +
+      '<div class="statRow"><div class="stat"><div class="statValue">' + dist + '</div><div class="statLabel">距你</div></div>' +
+      '<span class="statDivider"></span><div class="stat"><div class="statValue">' + seen + '</div><div class="statLabel">更新</div></div></div>' +
+      '<div class="cardActions"><button class="pill pillGhost" onclick="openChat(\'' + f.id + '\')">💬 聊天</button>' +
+      '<button class="pill pillGhost" onclick="shareFriend(\'' + f.id + '\')">🔗 分享</button>' +
+      '<button class="pill pillSolid" onclick="wave(\'' + f.id + '\')">👋 打招呼</button></div>' +
+      '<div class="lockNote">🔒 只有好友能看到位置</div>';
+  }
+}
+async function cycleStatus() {
+  const idx = STATUSES.findIndex((s) => s.emoji === state.me.status_emoji);
+  const next = STATUSES[(idx + 1 + STATUSES.length) % STATUSES.length];
+  state.me.status_emoji = next.emoji;
+  state.me.status_text = next.text;
+  renderDetailCard();
+  renderSheetList();
+  if (state.myLat != null) updateSelfMarker(state.myLat, state.myLng);
+  await sb.from("profiles").update({ status_emoji: next.emoji, status_text: next.text }).eq("id", state.me.id);
+}
+async function wave(friendId) {
+  const f = state.friends.find((x) => x.id === friendId);
+  if (!f) return;
+  showToast("已向 " + (f.display_name || f.username) + " 打招呼 👋");
+  await sb.from("messages").insert({ sender_id: state.me.id, recipient_id: friendId, body: "👋" });
+}
+
+async function openChat(friendId) {
+  state.chatWith = friendId;
+  $("#chatOverlay").style.transform = "translateY(0)";
+  await loadThread(friendId);
+}
+function closeChat() {
+  state.chatWith = null;
+  $("#chatOverlay").style.transform = "translateY(100%)";
+}
+async function loadThread(friendId) {
+  const meId = state.me.id;
+  const { data } = await sb
+    .from("messages")
+    .select("*")
+    .or(`and(sender_id.eq.${meId},recipient_id.eq.${friendId}),and(sender_id.eq.${friendId},recipient_id.eq.${meId})`)
+    .order("created_at", { ascending: true });
+  state.threads[friendId] = data || [];
+  if (state.chatWith === friendId) renderChat();
+}
+function renderChat() {
+  const f = state.friends.find((x) => x.id === state.chatWith);
+  if (!f) return;
+  const c = colorForProfile(f);
+  $("#chatHeadName").textContent = f.display_name || f.username;
+  $("#chatHeadSub").textContent = (f.status_emoji || "") + " " + (f.status_text || "");
+  const av = $("#chatHeadAvatar");
+  av.textContent = (f.display_name || f.username).slice(0, 1);
+  av.style.background = c.tint; av.style.color = c.ring; av.style.borderColor = c.ring;
+  const msgs = state.threads[state.chatWith] || [];
+  $("#thread").innerHTML = msgs
+    .map((m) => {
+      const mine = m.sender_id === state.me.id;
+      return '<div class="msg ' + (mine ? "msgMe" : "msgThem") + '"' + (mine ? "" : ' style="background:' + c.tint + '"') + ">" + esc(m.body) + "</div>";
+    })
+    .join("");
+  $("#thread").scrollTop = $("#thread").scrollHeight;
+}
+async function sendMsg() {
+  const input = $("#chatInput");
+  const text = input.value.trim();
+  if (!text || !state.chatWith) return;
+  input.value = "";
+  const { error } = await sb.from("messages").insert({ sender_id: state.me.id, recipient_id: state.chatWith, body: text });
+  if (error) { showToast("发送失败：" + error.message); return; }
+  await loadThread(state.chatWith);
+}
+
+function openAdd() {
+  $("#addOverlay").style.transform = "translateY(0)";
+  $("#searchInput").value = "";
+  state.searchQuery = "";
+  runSearch();
+}
+function closeAdd() { $("#addOverlay").style.transform = "translateY(100%)"; }
+function onSearchInput() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(runSearch, 250);
+}
+async function runSearch() {
+  const q = $("#searchInput").value.trim();
+  state.searchQuery = q;
+  let query = sb.from("profiles").select("*").neq("id", state.me.id).limit(20);
+  if (q) query = query.or(`username.ilike.%${q}%,display_name.ilike.%${q}%`);
+  const { data } = await query;
+  state.searchResults = data || [];
+  renderSearchResults();
+}
+function renderSearchResults() {
+  const friendIds = new Set(state.friends.map((f) => f.id));
+  const list = state.searchResults;
+  $("#resultsLabel").textContent = state.searchQuery ? "搜索结果 · " + list.length : "推荐好友";
+  if (state.searchQuery && list.length === 0) {
+    $("#resultsList").innerHTML = '<div class="emptyHint">没找到「' + esc(state.searchQuery) + '」<br>换个 ID 或名字试试</div>';
+    return;
+  }
+  $("#resultsList").innerHTML = list
+    .map((p) => {
+      const c = colorForProfile(p);
+      const already = friendIds.has(p.id);
+      const sent = state.sentIds.has(p.id);
+      const btn = already
+        ? '<span class="addBtnDone">已是好友</span>'
+        : sent
+        ? '<span class="addBtnDone">已发送</span>'
+        : '<button class="addBtn" onclick="sendRequest(\'' + p.id + '\')">＋ 添加</button>';
+      return (
+        '<div class="resultRow"><span class="rowAvatar" style="background:' + c.tint + ";color:" + c.ring + ";border-color:" + c.ring + '">' +
+        esc((p.display_name || p.username).slice(0, 1)) + "</span>" +
+        '<span class="rowBody"><span class="rowName">' + esc(p.display_name || p.username) + "</span>" +
+        '<span class="rowSub">@' + esc(p.username) + "</span></span>" + btn + "</div>"
+      );
+    })
+    .join("");
+}
+
+switchTab("signin");
+sb.auth.getSession().then(async ({ data }) => {
+  if (!data.session) return;
+  const { data: prof } = await sb.from("profiles").select("id").eq("id", data.session.user.id).maybeSingle();
+  if (!prof) {
+    $("#authView").style.display = "none";
+    $("#completeView").style.display = "flex";
+    return;
+  }
+  bootApp(data.session);
+});
+document.getElementById("siPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") doSignIn(); });
+document.getElementById("suPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") doSignUp(); });
+document.getElementById("chatInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendMsg();
+});
+</script>
+</body>
+</html>

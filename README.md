@@ -1,119 +1,60 @@
 # Pinpop
 
-A Zenly-style friend location map — one HTML file + [Supabase](https://supabase.com). Real accounts, friends, live locations, and chat. No fake data.
+Zenly-style friend location map — React + TypeScript + Vite frontend with Supabase backend.
 
-**Live demo:** https://william101102.github.io/zenly-app/
+## Stack
 
-> **第一次访问是 404？** 按 [`SETUP.md`](./SETUP.md) 开通 GitHub Pages（2 分钟，需要你在 GitHub 网页上点一下）。
+- **Frontend:** React 18, TypeScript, Vite, Leaflet
+- **Backend:** Supabase (Auth, Postgres, Realtime)
+- **Deploy:** GitHub Pages via `.github/workflows/pages.yml`
 
-**Custom domain (when you buy it):** https://pinpop.app
-
-## What it does
-
-- Email sign up / sign in (Supabase Auth)
-- Live map with you and your friends (browser GPS + Supabase Realtime)
-- Search and add friends by ID or name; they must accept first
-- Only friends can see each other's location (enforced by database RLS)
-- Switch your status (🏠 home / 💼 work / 🍔 eating / 🎧 chilling / 🚶 walking)
-- 1:1 chat and quick wave 👋
-- Bottom friend sheet — swipe up like the real Zenly app
-
-## Tech stack
-
-| Part | Choice |
-|---|---|
-| UI | Vanilla HTML / CSS / JS (no build step) |
-| Map | Leaflet + OpenStreetMap (free, no API key) |
-| Backend | Supabase (Postgres + Auth + Realtime) |
-| Location | Browser Geolocation API |
-
-## Run locally
-
-1. Run [`schema.sql`](./schema.sql) in your Supabase SQL Editor.
-2. Turn off email confirmation for testing: **Authentication → Providers → Email → disable "Confirm email"**.
-3. Open `index.html` in a browser (double-click is fine).
-4. Register two accounts, add each other as friends, allow location permission.
-
-Supabase keys are already in `index.html`. The `anon` key is meant to be public.
-
-## Deploy to GitHub Pages (free HTTPS)
-
-This repo includes [`.github/workflows/pages.yml`](./.github/workflows/pages.yml). After you push to `main`:
-
-1. Open **GitHub → zenly-app → Settings → Pages**
-2. Under **Build and deployment → Source**, choose **GitHub Actions**
-3. Wait ~1 minute for the workflow to finish
-4. Visit **https://william101102.github.io/zenly-app/**
-
-> Geolocation only works on **HTTPS** (or `localhost`). GitHub Pages gives you HTTPS for free.
-
-### One-time check
-
-Go to **Actions** tab → confirm the "Deploy to GitHub Pages" workflow succeeded (green check).
-
-## Custom domain: `https://pinpop.app`
-
-**Pinpop** = pin (on the map) + pop (playful, Zenly-like). Short, easy to remember, works as a URL.
-
-To use `https://pinpop.app` instead of the long `github.io/zenly-app` path:
-
-### 1. Buy the domain (~$10–15/year)
-
-Buy **pinpop.app** (or **pinpop.io**, **getpinpop.com**, etc.) from:
-
-- [Cloudflare Registrar](https://www.cloudflare.com/products/registrar/)
-- [Namecheap](https://www.namecheap.com)
-- [Porkbun](https://porkbun.com)
-
-Search `pinpop.app` and buy if available. If taken, try `pinpop.io` or `usepinpop.com`.
-
-### 2. Point DNS to GitHub Pages
-
-In your domain registrar's DNS settings:
-
-| Type | Name | Value |
-|---|---|---|
-| `A` | `@` | `185.199.108.153` |
-| `A` | `@` | `185.199.109.153` |
-| `A` | `@` | `185.199.110.153` |
-| `A` | `@` | `185.199.111.153` |
-| `CNAME` | `www` | `william101102.github.io` |
-
-(Cloudflare: set proxy to **DNS only** / grey cloud for the A records.)
-
-### 3. Tell GitHub your domain
+## Quick start
 
 ```bash
-# In the repo root, create CNAME (copy from the example):
-cp CNAME.example CNAME
-# Edit CNAME if you bought a different domain, e.g. pinpop.io
-git add CNAME
-git commit -m "Add custom domain"
-git push
+cp .env.example .env.local
+# fill VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+npm install
+npm run dev
 ```
 
-Then in **Settings → Pages → Custom domain**, enter `pinpop.app` (or your domain) and enable **Enforce HTTPS**.
+## Scripts
 
-After DNS propagates (5 min – 48 hrs), the app runs at **https://pinpop.app**.
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Local dev server |
+| `npm run build` | Production build to `dist/` |
+| `npm run typecheck` | TypeScript check |
+| `npm run preview` | Preview production build |
 
-### 4. Add domain in Supabase (if auth redirects break)
+## Environment variables
 
-Supabase → **Authentication → URL Configuration** → add:
+Set in `.env.local` locally and as **GitHub repository variables** for Pages:
 
-- `https://pinpop.app`
-- `https://william101102.github.io/zenly-app`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-## Test the full flow
+Never commit a service-role key.
 
-1. Open the live URL on your phone or laptop
-2. Register with two different emails
-3. Allow location when prompted
-4. Search the other account's ID and send a friend request
-5. Accept on the other account
-6. You should see each other move on the map in real time
+## Database
 
-## Known limits
+1. Run original [`schema.sql`](./schema.sql) on a **development** Supabase project.
+2. Review [`backend/supabase/scripts/review_duplicate_friendships.sql`](./backend/supabase/scripts/review_duplicate_friendships.sql).
+3. Apply migrations in [`backend/supabase/migrations/`](./backend/supabase/migrations/) **on dev first**.
+4. Ghost Mode enforcement lives in `202608300002_ghost_mode_locations.sql` (`friend_locations` view).
 
-- Friend requests can duplicate if both users send at once (harmless)
-- No unread message count — only a toast on new messages
-- Map uses default OpenStreetMap tiles, not Zenly's candy-colored style
+The legacy single-file app is preserved at [`legacy/index.html`](./legacy/index.html).
+
+## Features ported from legacy
+
+- Sign up / sign in / profile completion
+- Friend search, requests, accept/decline, invite links (`?add=username`)
+- Live location + Realtime updates
+- 1:1 chat and waves
+- Status cycling
+- Share self (add-friend card) vs share friend (friend detail card)
+- Preview mode with demo data
+- Ghost Mode UI + server-side masking (after migration)
+
+## Live demo
+
+https://william101102.github.io/zenly-app/
