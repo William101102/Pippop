@@ -34,6 +34,9 @@ create table if not exists public.significant_places (
   score numeric not null default 0,
   first_seen_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
+  -- Grid cell (~50 m) used for the dedupe key below.
+  cell_lat bigint not null,
+  cell_lng bigint not null,
   unique (user_id, kind, cell_lat, cell_lng)
 );
 
