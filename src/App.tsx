@@ -1,20 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
-  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed, MapPin,
-  MessageCircle, Navigation, Search, Send, SmilePlus, Sparkles, Users, X,
+  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed, LogOut,
+  MapPin, MessageCircle, Search, Send, SmilePlus, Sparkles, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
 import { ChatPanel } from './components/ChatPanel';
+import { CheckInPanel } from './components/CheckInPanel';
 import { CompleteProfileScreen } from './components/CompleteProfileScreen';
-import { SHEET_OFFSET_PX } from './lib/constants';
+import { NearbyPanel } from './components/NearbyPanel';
+import { NotificationsPanel, type UnreadPreview } from './components/NotificationsPanel';
+import { RequestsInbox } from './components/RequestsInbox';
+import { StatusEditor } from './components/StatusEditor';
+import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
 import { isConfigured, supabase } from './lib/supabase';
-import { loadFriendsBundle, sendFriendRequest } from './services/friends';
+import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
+import { loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
-import { completeProfile, searchProfiles } from './services/profiles';
-import type { Friend, GhostMode, LiveLocation, Message, Panel, Profile } from './types';
+import {
+  completeProfile, getFriendGhostModes, getGhostMode, searchProfiles,
+  setFriendGhostMode, setGhostMode as persistGhostMode, updateStatus,
+} from './services/profiles';
+import type {
+  Friend, FriendRequest, GhostMode, LiveLocation, Message, NearbyPlace, Panel, PlaceCategory,
+  Profile, Visit, VisitVisibility,
+} from './types';
+import { useBattery } from './hooks/useBattery';
 import { useMessages } from './hooks/useMessages';
 import { useRealtime } from './hooks/useRealtime';
 import { useSignificantPlaces } from './hooks/useSignificantPlaces';
@@ -22,12 +35,9 @@ import { useSignificantPlaces } from './hooks/useSignificantPlaces';
 const WORLD_CENTER: [number, number] = [20, 0];
 const WORLD_ZOOM = 2;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const modes: { value: GhostMode; title: string; detail: string; icon: string }[] = [
-  { value: 'precise', title: '精确位置', detail: '实时显示你的准确位置', icon: '◎' },
-  { value: 'blurred', title: '模糊位置', detail: '随机偏移约 0.2–1.2 km', icon: '◌' },
-  { value: 'frozen', title: '冻结位置', detail: '停留在上一次的位置', icon: '❄' },
-];
+const CATEGORY_ICON: Record<string, string> = {
+  cafe: '☕️', food: '🍜', park: '🌳', gym: '🏋️', shop: '🛍️', home: '🏠', work: '💼', other: '📍',
+};
 
 function ago(iso?: string) {
   if (!iso) return '暂无位置';
@@ -42,6 +52,15 @@ function safeHtml(value: string) {
   return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
 function isUserUuid(id: string) { return UUID_RE.test(id); }
+
+/** Reads the `?add=username` invite deep link once on boot. */
+function readInviteQuery() {
+  try {
+    return new URLSearchParams(window.location.search).get('add')?.trim() || '';
+  } catch {
+    return '';
+  }
+}
 
 function AuthScreen() {
   const [signup, setSignup] = useState(false);
@@ -103,17 +122,26 @@ function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [requestBusy, setRequestBusy] = useState<Set<string>>(new Set());
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [addResults, setAddResults] = useState<Profile[]>([]);
+  const [inviteQuery, setInviteQuery] = useState('');
   const [location, setLocation] = useState<LiveLocation | null>(null);
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>('friends');
   const [selected, setSelected] = useState<Friend | null>(null);
   const [ghostMode, setGhostMode] = useState<GhostMode>('precise');
+  const [friendModes, setFriendModes] = useState<Record<string, GhostMode>>({});
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [myVisits, setMyVisits] = useState<Visit[]>([]);
+  const [checkInOpen, setCheckInOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [search, setSearch] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [waving, setWaving] = useState(false);
   const [mapTileError, setMapTileError] = useState<string | null>(null);
   const [quickDraft, setQuickDraft] = useState('');
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
@@ -125,8 +153,25 @@ function App() {
   const didAutoFocus = useRef(false);
   const locationRef = useRef<LiveLocation | null>(null);
   locationRef.current = location;
+
   const { places, recordFix } = useSignificantPlaces(profile?.id, signedIn && Boolean(profile));
-  const { threads, chatWith, openChat, closeChat, send, wave, pushIncoming } = useMessages(profile?.id);
+  const {
+    threads, unread, totalUnread, chatWith,
+    openChat, closeChat, send, wave, waveAll, whatsUp, pushIncoming, refreshUnread,
+  } = useMessages(profile?.id);
+  useBattery(profile?.id);
+
+  const notify = useCallback((text: string) => {
+    setToast(text);
+    window.setTimeout(() => setToast(''), 3200);
+  }, []);
+
+  const reloadFriends = useCallback(async (userId: string) => {
+    const bundle = await loadFriendsBundle(userId);
+    setFriends(bundle.friends);
+    setRequests(bundle.requests);
+    setSentIds(bundle.sentIds);
+  }, []);
 
   const handleFriendLocation = useCallback((userId: string, row: Record<string, unknown> | null) => {
     if (!row) return;
@@ -139,23 +184,6 @@ function App() {
     pushIncoming(msg);
   }, [pushIncoming]);
 
-  // Feed own fixes into private significant-place history (overnight/home/work).
-  useEffect(() => {
-    if (!location || !profile) return;
-    recordFix(location.lat, location.lng, location.updated_at).catch(() => undefined);
-  }, [location, profile, recordFix]);
-
-  const notify = useCallback((text: string) => {
-    setToast(text);
-    window.setTimeout(() => setToast(''), 3200);
-  }, []);
-
-  const reloadFriends = useCallback(async (userId: string) => {
-    const bundle = await loadFriendsBundle(userId);
-    setFriends(bundle.friends);
-    setSentIds(bundle.sentIds);
-  }, []);
-
   useRealtime({
     meId: profile?.id,
     onFriendsChange: () => {
@@ -166,6 +194,17 @@ function App() {
   });
 
   useEffect(() => {
+    const invite = readInviteQuery();
+    if (invite) setInviteQuery(invite);
+  }, []);
+
+  // Feed own fixes into private significant-place history (overnight/home/work).
+  useEffect(() => {
+    if (!location || !profile) return;
+    recordFix(location.lat, location.lng, location.updated_at).catch(() => undefined);
+  }, [location, profile, recordFix]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSignedIn(Boolean(data.session)); setSessionReady(true); });
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       setSignedIn(Boolean(next));
@@ -174,8 +213,13 @@ function App() {
         setProfile(null);
         setProfileLoaded(false);
         setFriends([]);
+        setRequests([]);
         setLocation(null);
         setLocationLabel(null);
+        setMyVisits([]);
+        setNearbyPlaces([]);
+        setFriendModes({});
+        setPanel('friends');
         didAutoFocus.current = false;
       }
     });
@@ -204,10 +248,18 @@ function App() {
           setLocationLabel('上次保存的位置');
         }
         await reloadFriends(user.user.id);
+        getGhostMode(user.user.id).then(setGhostMode).catch(() => undefined);
+        getFriendGhostModes(user.user.id).then(setFriendModes).catch(() => undefined);
+        loadMyVisits(user.user.id).then(setMyVisits).catch(() => undefined);
       }
       setProfileLoaded(true);
     })();
   }, [signedIn, reloadFriends]);
+
+  // Open the add-friend sheet automatically when arriving from an invite link.
+  useEffect(() => {
+    if (inviteQuery && profile) setPanel('add');
+  }, [inviteQuery, profile]);
 
   useEffect(() => {
     if (!signedIn || !profile || !navigator.geolocation) return;
@@ -335,7 +387,35 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -500 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, places, mapReady]);
+    // Check-in pins, so the nearby list and the map agree.
+    nearbyPlaces.forEach(p => {
+      const icon = L.divIcon({
+        className: 'place-pin-shell',
+        html: `<div class="place-pin checkin" style="--place:#5b35f2"><span>${CATEGORY_ICON[p.category] || '📍'}</span><b>${safeHtml(p.name)}</b></div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+      L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -400 }).addTo(layers.current!);
+    });
+  }, [friends, location, profile, places, nearbyPlaces, mapReady]);
+
+  const refreshNearby = useCallback(async () => {
+    const current = locationRef.current;
+    if (!current) return;
+    setNearbyLoading(true);
+    try {
+      setNearbyPlaces(await loadNearbyPlaces(current.lat, current.lng));
+    } catch {
+      // nearby places are best-effort
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (panel !== 'places' || !location) return;
+    refreshNearby();
+  }, [panel, location, refreshNearby]);
 
   async function locateMe() {
     if (locating || !profile) return;
@@ -399,6 +479,98 @@ function App() {
     }
   }
 
+  async function respondToRequest(relId: string, status: 'accepted' | 'declined') {
+    if (!profile) return;
+    setRequestBusy(prev => new Set(prev).add(relId));
+    try {
+      await respondFriendRequest(relId, status);
+      await reloadFriends(profile.id);
+      notify(status === 'accepted' ? '你们已经是好友啦 🎉' : '已忽略该请求');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '操作失败，请稍后再试');
+    } finally {
+      setRequestBusy(prev => { const next = new Set(prev); next.delete(relId); return next; });
+    }
+  }
+
+  async function changeGhostMode(mode: GhostMode) {
+    if (!profile) return;
+    const previous = ghostMode;
+    setGhostMode(mode);
+    try {
+      await persistGhostMode(profile.id, mode, location ? { lat: location.lat, lng: location.lng } : undefined);
+      const label = GHOST_MODES.find(m => m.value === mode)?.title ?? mode;
+      notify(`已切换为${label}，朋友看到的位置由服务端处理`);
+    } catch (error) {
+      setGhostMode(previous);
+      notify(error instanceof Error ? error.message : '隐私设置保存失败');
+    }
+  }
+
+  async function changeFriendMode(friendId: string, mode: GhostMode | null) {
+    if (!profile) return;
+    const previous = friendModes;
+    setFriendModes(current => {
+      const next = { ...current };
+      if (mode) next[friendId] = mode;
+      else delete next[friendId];
+      return next;
+    });
+    try {
+      await setFriendGhostMode(profile.id, friendId, mode);
+    } catch (error) {
+      setFriendModes(previous);
+      notify(error instanceof Error ? error.message : '单独设置保存失败');
+    }
+  }
+
+  async function saveStatus(emoji: string, text: string) {
+    if (!profile) return { error: '登录状态已失效' };
+    try {
+      await updateStatus(profile.id, emoji, text);
+      setProfile(current => current ? { ...current, status_emoji: emoji, status_text: text } : current);
+      notify('状态已更新');
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '状态保存失败' };
+    }
+  }
+
+  async function waveAtEveryone() {
+    if (!profile || waving) return;
+    if (!friends.length) {
+      notify('先加几个朋友，再一起挥手吧');
+      setPanel('add');
+      return;
+    }
+    setWaving(true);
+    try {
+      const result = await waveAll(friends.map(f => f.id));
+      notify(result.failed
+        ? `已向 ${result.sent} 位朋友挥手，${result.failed} 位失败`
+        : `已向 ${result.sent} 位朋友挥手 👋`);
+    } finally {
+      setWaving(false);
+    }
+  }
+
+  async function submitCheckIn(input: {
+    name: string;
+    category: PlaceCategory;
+    address?: string | null;
+    visibility: VisitVisibility;
+    note?: string;
+  }) {
+    if (!profile || !location) return { error: '需要先定位才能打卡' };
+    const result = await checkIn(profile.id, { ...input, lat: location.lat, lng: location.lng });
+    if (result.error) return { error: result.error };
+    setCheckInOpen(false);
+    notify('打卡成功 📍');
+    loadMyVisits(profile.id).then(setMyVisits).catch(() => undefined);
+    refreshNearby();
+    return {};
+  }
+
   const filtered = useMemo(
     () => friends.filter(f => `${f.display_name} ${f.username}`.toLowerCase().includes(search.toLowerCase())),
     [friends, search],
@@ -409,6 +581,18 @@ function App() {
     () => (chatWith ? friends.find(f => f.id === chatWith) ?? null : null),
     [chatWith, friends],
   );
+
+  const unreadPreviews = useMemo<UnreadPreview[]>(
+    () => friends
+      .filter(f => (unread[f.id] || 0) > 0)
+      .map(f => {
+        const thread = threads[f.id] || [];
+        return { friend: f, count: unread[f.id], last: thread[thread.length - 1] };
+      }),
+    [friends, unread, threads],
+  );
+
+  const notificationCount = requests.length + totalUnread;
 
   if (!sessionReady) {
     return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
@@ -429,6 +613,16 @@ function App() {
       }} />
     );
   }
+
+  const sheetCopy: Record<string, { eyebrow: string; title: string }> = {
+    friends: { eyebrow: '你的圈子', title: `${friends.length} 位朋友` },
+    places: { eyebrow: '身边正在发生', title: '探索附近' },
+    world: { eyebrow: '你的世界', title: '我的资料' },
+    messages: { eyebrow: '保持联系', title: '消息' },
+    settings: { eyebrow: '位置隐私', title: 'Ghost Mode' },
+    notifications: { eyebrow: '最新动态', title: '通知' },
+  };
+  const copy = panel ? sheetCopy[panel] : undefined;
 
   return (
     <main className="app-shell">
@@ -451,7 +645,10 @@ function App() {
           <ChevronDown size={16} />
         </button>
         <div className="top-actions">
-          <button className="circle-button" type="button" onClick={() => notify('现在没有新通知')}><Bell size={20} /></button>
+          <button className="circle-button" type="button" onClick={() => setPanel('notifications')} aria-label="通知">
+            <Bell size={20} />
+            {notificationCount > 0 && <span className="dot-badge">{notificationCount > 9 ? '9+' : notificationCount}</span>}
+          </button>
           <button className={`circle-button ${ghostMode !== 'precise' ? 'active' : ''}`} type="button" onClick={() => setPanel('settings')}><Ghost size={21} /></button>
         </div>
       </header>
@@ -460,24 +657,30 @@ function App() {
         <button type="button" onClick={locateMe} disabled={locating} aria-label="定位到我">
           {locating ? <Loader2 size={21} className="spin" /> : <LocateFixed size={21} />}
         </button>
-        <button type="button" onClick={() => setPanel('places')}><MapPin size={21} /></button>
+        <button type="button" onClick={() => setPanel('places')} aria-label="探索附近"><MapPin size={21} /></button>
       </div>
 
       <nav className="dock">
         <button className={panel === 'friends' ? 'active' : ''} type="button" onClick={() => setPanel('friends')}><Users /><span>朋友</span></button>
         <button className={panel === 'places' ? 'active' : ''} type="button" onClick={() => setPanel('places')}><Search /><span>探索</span></button>
-        <button className="center-action" type="button" disabled onClick={() => notify('挥手功能正在开发中')}><span>👋</span></button>
+        <button className="center-action" type="button" disabled={waving} onClick={waveAtEveryone} aria-label="向所有朋友挥手">
+          <span>{waving ? '…' : '👋'}</span>
+        </button>
         <button className={panel === 'world' ? 'active' : ''} type="button" onClick={() => setPanel('world')}><Footprints /><span>足迹</span></button>
-        <button className={panel === 'messages' ? 'active' : ''} type="button" onClick={() => setPanel('messages')}><MessageCircle /><span>消息</span></button>
+        <button className={panel === 'messages' ? 'active' : ''} type="button" onClick={() => setPanel('messages')}>
+          <MessageCircle /><span>消息</span>
+          {totalUnread > 0 && <span className="dot-badge">{totalUnread > 9 ? '9+' : totalUnread}</span>}
+        </button>
       </nav>
 
-      {panel === 'add' && profile && (
+      {panel === 'add' && (
         <AddFriendPanel
           me={profile}
           results={addResults}
           sentIds={sentIds}
           friendIds={friendIds}
-          onClose={() => setPanel('friends')}
+          initialQuery={inviteQuery}
+          onClose={() => { setInviteQuery(''); setPanel('friends'); }}
           onSearch={(q) => { searchProfiles(profile.id, q).then(setAddResults).catch(() => undefined); }}
           onSendRequest={async (id) => {
             await sendFriendRequest(profile.id, id);
@@ -488,28 +691,29 @@ function App() {
         />
       )}
 
-      {panel && panel !== 'add' && (
+      {checkInOpen && location && (
+        <CheckInPanel location={location} onClose={() => setCheckInOpen(false)} onSubmit={submitCheckIn} />
+      )}
+
+      {panel && panel !== 'add' && copy && (
         <aside className="sheet">
           <div className="grabber" />
           <div className="sheet-head">
             <div>
-              <div className="eyebrow">
-                {panel === 'friends' ? '你的圈子' : panel === 'places' ? '身边正在发生' : panel === 'world' ? '你的世界' : panel === 'messages' ? '保持联系' : '位置隐私'}
-              </div>
-              <h2>
-                {panel === 'friends' ? `${friends.length} 位朋友` : panel === 'places' ? '探索地点' : panel === 'world' ? '我的资料' : panel === 'messages' ? '消息' : 'Ghost Mode'}
-              </h2>
+              <div className="eyebrow">{copy.eyebrow}</div>
+              <h2>{copy.title}</h2>
             </div>
             <button className="close-button" type="button" onClick={() => setPanel(null)}><X size={19} /></button>
           </div>
 
           {panel === 'friends' && (
             <>
+              <RequestsInbox requests={requests} busyIds={requestBusy} onRespond={respondToRequest} />
               <div className="search"><Search size={18} /><input placeholder="搜索朋友" value={search} onChange={e => setSearch(e.target.value)} /></div>
               <div className="friend-list">
                 {filtered.length === 0 && (
                   <div className="empty-state">
-                    <p className="muted empty-hint">还没有朋友</p>
+                    <p className="muted empty-hint">{friends.length ? '没有匹配的朋友' : '还没有朋友'}</p>
                     <button className="primary compact" type="button" onClick={() => setPanel('add')}>添加朋友</button>
                   </div>
                 )}
@@ -524,14 +728,32 @@ function App() {
                   </button>
                 ))}
               </div>
+              {friends.length > 0 && (
+                <button className="primary compact wide" type="button" onClick={() => setPanel('add')}>添加更多朋友</button>
+              )}
             </>
           )}
 
           {panel === 'places' && (
-            <div className="feature-grid">
-              <button type="button" disabled><span className="feature-icon coral"><MapPin /></span><b>附近地点</b><small>功能正在开发中</small></button>
-              <button type="button" disabled><span className="feature-icon violet"><Navigation /></span><b>在这里打卡</b><small>功能正在开发中</small></button>
-            </div>
+            <NearbyPanel
+              friends={friends}
+              myLocation={location}
+              places={nearbyPlaces}
+              loading={nearbyLoading}
+              onCheckIn={() => setCheckInOpen(true)}
+              onSelectFriend={(f) => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}
+              onFocusPlace={focusMapOn}
+            />
+          )}
+
+          {panel === 'notifications' && (
+            <NotificationsPanel
+              requests={requests}
+              unreadPreviews={unreadPreviews}
+              busyIds={requestBusy}
+              onRespond={respondToRequest}
+              onOpenChat={(id) => { openChat(id); setPanel(null); }}
+            />
           )}
 
           {panel === 'world' && (
@@ -547,6 +769,33 @@ function App() {
                 </div>
                 <div><span>@{profile.username}</span><strong>{profile.display_name}</strong><small>让朋友一眼就在地图上找到你</small></div>
               </div>
+
+              <StatusEditor profile={profile} onSave={saveStatus} />
+
+              <div className="eyebrow">我的打卡</div>
+              {myVisits.length === 0 ? (
+                <p className="muted empty-hint">还没有打卡记录，去「探索」里打个卡吧。</p>
+              ) : (
+                <div className="friend-list">
+                  {myVisits.map(visit => (
+                    <button
+                      className="friend-row"
+                      type="button"
+                      key={visit.id}
+                      onClick={() => visit.place && focusMapOn(visit.place.lat, visit.place.lng)}
+                    >
+                      <span className="avatar place-avatar">{CATEGORY_ICON[visit.place?.category || 'other'] || '📍'}</span>
+                      <div>
+                        <b>{visit.place?.name || '未知地点'}</b>
+                        <small>{visit.note || (visit.visibility === 'private' ? '仅自己可见' : '好友可见')}</small>
+                      </div>
+                      <span className="friend-meta">{ago(visit.arrived_at)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="eyebrow">自动足迹</div>
               {places.length === 0 ? (
                 <p className="muted empty-hint">还没有足迹数据，开着 App 时会自动记录你的常去地点。</p>
               ) : (
@@ -572,9 +821,14 @@ function App() {
                   ))}
                 </div>
               )}
-              <button className="privacy-note" type="button" disabled>
+
+              <div className="privacy-note">
                 <Ghost size={19} />
                 <div><b>足迹默认仅你可见</b><small>过夜地点 / Home / Work 仅保存在你自己的账号下</small></div>
+              </div>
+
+              <button className="danger-button" type="button" onClick={() => supabase.auth.signOut()}>
+                <LogOut size={17} /> 退出登录
               </button>
             </div>
           )}
@@ -590,14 +844,18 @@ function App() {
               {friends.map(f => {
                 const thread = threads[f.id] || [];
                 const last = thread[thread.length - 1];
+                const count = unread[f.id] || 0;
                 return (
                   <button className="friend-row" key={f.id} type="button" onClick={() => openChat(f.id)}>
                     <Avatar profile={f} showStatus />
                     <div>
                       <b>{f.display_name}</b>
-                      <small>{last ? last.body : '开始聊天…'}</small>
+                      <small className={count ? 'strong' : ''}>{last ? last.body : '开始聊天…'}</small>
                     </div>
-                    {last && <span className="friend-meta">{ago(last.created_at)}</span>}
+                    <span className="friend-meta">
+                      {count > 0 && <span className="badge">{count}</span>}
+                      {last && <small>{ago(last.created_at)}</small>}
+                    </span>
                   </button>
                 );
               })}
@@ -606,15 +864,43 @@ function App() {
 
           {panel === 'settings' && (
             <div className="ghost-panel">
-              <p>选择朋友在地图上看到你的位置精度。服务端隐私控制仍在开发中。</p>
-              {modes.map(m => (
-                <button key={m.value} type="button" className={ghostMode === m.value ? 'selected' : ''} onClick={() => { setGhostMode(m.value); notify(`已切换为${m.title}（仅本地 UI）`); }}>
+              <p>选择朋友在地图上看到你的位置精度。模糊和冻结都由服务端处理，朋友拿不到你的真实坐标。</p>
+              {GHOST_MODES.map(m => (
+                <button key={m.value} type="button" className={ghostMode === m.value ? 'selected' : ''} onClick={() => changeGhostMode(m.value)}>
                   <span>{m.icon}</span>
                   <div><b>{m.title}</b><small>{m.detail}</small></div>
                   <i />
                 </button>
               ))}
-              <div className="setting-row"><div><b>针对单个好友设置</b><small>功能正在开发中</small></div><span>即将开放</span></div>
+
+              <div className="eyebrow">针对单个好友</div>
+              {friends.length === 0 ? (
+                <p className="muted empty-hint">有好友之后就能单独设置了。</p>
+              ) : (
+                <div className="per-friend-list">
+                  {friends.map(f => (
+                    <div className="per-friend-row" key={f.id}>
+                      <Avatar profile={f} />
+                      <div><b>{f.display_name}</b><small>@{f.username}</small></div>
+                      <div className="chip-row tight">
+                        <button
+                          type="button"
+                          className={!friendModes[f.id] ? 'chip selected' : 'chip'}
+                          onClick={() => changeFriendMode(f.id, null)}
+                        >默认</button>
+                        {GHOST_MODES.map(m => (
+                          <button
+                            key={m.value}
+                            type="button"
+                            className={friendModes[f.id] === m.value ? 'chip selected' : 'chip'}
+                            onClick={() => changeFriendMode(f.id, m.value)}
+                          >{m.icon}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </aside>
@@ -632,8 +918,14 @@ function App() {
             {selected.battery_level != null && <small>{selected.battery_level}% 电量</small>}
           </div>
           <div className="person-actions">
-            <button type="button" onClick={async () => { await wave(selected.id); notify(`已向 ${selected.display_name} 挥手 👋`); }}><SmilePlus /><span>打招呼</span></button>
-            <button type="button" onClick={() => notify('What\'s Up 功能正在开发中')}><Sparkles /><span>What&apos;s Up</span></button>
+            <button type="button" onClick={async () => {
+              const result = await wave(selected.id);
+              notify(result.error || `已向 ${selected.display_name} 挥手 👋`);
+            }}><SmilePlus /><span>打招呼</span></button>
+            <button type="button" onClick={async () => {
+              const result = await whatsUp(selected.id);
+              notify(result.error || `已问 ${selected.display_name} 在干什么 👀`);
+            }}><Sparkles /><span>What&apos;s Up</span></button>
             <button type="button" onClick={() => { openChat(selected.id); setSelected(null); }}><MessageCircle /><span>聊天</span></button>
           </div>
           <div className="quick-message">
@@ -661,12 +953,12 @@ function App() {
         </section>
       )}
 
-      {chatFriend && profile && (
+      {chatFriend && (
         <ChatPanel
           friend={chatFriend}
           messages={threads[chatFriend.id] || []}
           meId={profile.id}
-          onClose={closeChat}
+          onClose={() => { closeChat(); refreshUnread(); }}
           onSend={(text) => send(chatFriend.id, text)}
         />
       )}

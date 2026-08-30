@@ -396,3 +396,77 @@ button { color: inherit; }
   background: linear-gradient(135deg, var(--coral), var(--pink));
   cursor: pointer;
 }
+
+/* Shared primitives */
+.avatar { display: grid; flex: 0 0 auto; place-items: center; width: 46px; height: 46px; border: 3px solid #fff; border-radius: 16px; color: #fff; background: var(--coral); box-shadow: 0 5px 13px rgba(53,37,91,.16); font-size: 18px; font-weight: 900; }
+.place-avatar { background: #f0ebff; color: var(--ink); }
+.friend-row.static { cursor: default; }
+.friend-row.static:hover { background: transparent; transform: none; }
+.tiny { display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 10px; border: 0; border-radius: 12px; font-size: 11px; font-weight: 800; cursor: pointer; }
+.tiny.solid { color: #fff; background: linear-gradient(135deg, var(--coral), var(--pink)); }
+.tiny.ghost { color: var(--muted); background: #f2eef5; }
+.tiny:disabled { opacity: .5; cursor: not-allowed; }
+.tag { color: var(--muted); font-size: 9px; font-weight: 800; }
+.badge { display: inline-grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; border-radius: 9px; color: #fff; background: var(--pink); font-size: 10px; font-weight: 900; }
+.dot-badge { position: absolute; top: -3px; right: -3px; display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border: 2px solid #fff; border-radius: 9px; color: #fff; background: var(--pink); font-size: 9px; font-weight: 900; }
+.top-actions button, .dock button { position: relative; }
+.friend-row small.strong { color: var(--ink); font-weight: 800; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; }
+.chip { padding: 8px 11px; border: 1px solid #eae3ed; border-radius: 13px; background: #faf8fc; font-size: 11px; font-weight: 700; cursor: pointer; }
+.chip.selected { border-color: transparent; color: #fff; background: linear-gradient(135deg, var(--coral), var(--pink)); }
+.chip-row.tight { margin: 0; gap: 4px; }
+.chip-row.tight .chip { padding: 6px 8px; font-size: 10px; }
+.danger-button { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 4px; padding: 13px; border: 1px solid #f3dde2; border-radius: 16px; color: #c0392b; background: #fff5f6; font-size: 12px; font-weight: 800; cursor: pointer; }
+.primary.compact.wide { width: 100%; margin-top: 6px; }
+
+/* Map pins for saved places and check-ins */
+.place-pin-shell { border: 0 !important; background: none !important; }
+.place-pin { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border: 3px solid #fff; border-radius: 50%; background: var(--place); box-shadow: 0 6px 14px rgba(44,34,71,.24); font-size: 15px; }
+.place-pin b { position: absolute; top: 36px; left: 50%; max-width: 108px; padding: 3px 7px; overflow: hidden; border-radius: 9px; background: rgba(255,255,255,.9); box-shadow: 0 3px 9px rgba(44,34,71,.16); color: var(--ink); font-size: 9px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; transform: translateX(-50%); }
+.place-pin.checkin { border-radius: 12px; }
+
+/* Add-friend invite card */
+.my-id-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; margin-bottom: 10px; padding: 14px 16px; border: 1.5px dashed rgba(255,102,88,.45); border-radius: 18px; background: rgba(255,102,88,.08); cursor: pointer; text-align: left; }
+.my-id-card strong { font: 700 18px 'Fredoka'; }
+.my-id-card > span { color: var(--coral); font-size: 10px; font-weight: 800; }
+
+/* Incoming friend requests */
+.requests-inbox { display: grid; gap: 2px; margin-bottom: 12px; padding: 10px 11px; border-radius: 20px; background: linear-gradient(135deg, #fff2ec, #f1ecff); }
+.request-actions { display: flex; gap: 6px; }
+
+/* Status editor */
+.status-editor { display: grid; gap: 8px; padding: 13px; border-radius: 21px; background: #f8f5fa; }
+.emoji-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.emoji-row button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid transparent; border-radius: 12px; background: #fff; font-size: 17px; cursor: pointer; }
+.emoji-row button.selected { border-color: var(--violet); background: #f0ebff; }
+.status-input { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 16px; background: #fff; }
+.status-input span { font-size: 17px; }
+.status-input input { min-width: 0; flex: 1; padding: 11px 0; border: 0; outline: none; background: none; }
+.status-presets { display: flex; flex-wrap: wrap; gap: 5px; }
+
+/* Check-in sheet */
+.checkin-body { display: grid; gap: 9px; overflow: auto; }
+.checkin-field { display: grid; gap: 6px; color: #625b71; font-size: 11px; font-weight: 800; }
+.checkin-field input { width: 100%; padding: 13px; border: 1px solid #e8e2ed; border-radius: 16px; outline: none; background: #faf8fc; }
+.checkin-field input:focus { border-color: var(--violet); background: #fff; }
+.checkin-address { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.visibility-row { display: grid; grid-template-columns: 1fr 18px; align-items: center; gap: 9px; width: 100%; padding: 12px; border: 0; border-radius: 17px; background: #f6f2f8; cursor: pointer; text-align: left; }
+.visibility-row div { display: grid; gap: 2px; }
+.visibility-row small { color: var(--muted); font-size: 10px; }
+.visibility-row i { width: 17px; height: 17px; border: 2px solid #cfc5d5; border-radius: 50%; }
+.visibility-row.selected { background: #f0ebff; }
+.visibility-row.selected i { border: 5px solid var(--violet); }
+
+/* Nearby + notifications panels */
+.nearby-panel, .notifications-panel { display: grid; gap: 8px; }
+.nearby-panel .primary { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.nearby-panel .eyebrow, .notifications-panel .eyebrow { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+.nearby-panel .friend-meta, .notifications-panel .friend-meta { display: flex; align-items: center; gap: 5px; }
+
+/* Per-friend Ghost Mode overrides */
+.per-friend-list { display: grid; gap: 4px; }
+.per-friend-row { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 10px; padding: 9px 4px; }
+.per-friend-row > div:nth-child(2) { display: grid; gap: 2px; }
+.per-friend-row b { font-size: 12px; }
+.per-friend-row small { color: var(--muted); font-size: 10px; }
+.per-friend-row .chip-row { grid-column: 1 / -1; }

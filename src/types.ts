@@ -31,15 +31,47 @@ export interface FriendRequest {
   profile: Profile;
 }
 
+export type MessageKind = 'text' | 'emoji' | 'wave' | 'image' | 'location' | 'whats_up';
+
 export interface Message {
   id: string;
   sender_id: string;
   recipient_id: string;
   body: string;
   created_at: string;
+  kind?: MessageKind;
+  read_at?: string | null;
 }
 
-export type Panel = 'friends' | 'places' | 'world' | 'messages' | 'settings' | 'add' | null;
+export type PlaceCategory = 'cafe' | 'food' | 'home' | 'work' | 'park' | 'gym' | 'shop' | 'other';
+
+export interface CheckInPlace {
+  id: string;
+  name: string;
+  category: PlaceCategory;
+  address?: string | null;
+  lat: number;
+  lng: number;
+  created_by?: string | null;
+}
+
+export interface NearbyPlace extends CheckInPlace {
+  distanceKm: number;
+}
+
+export type VisitVisibility = 'private' | 'friends' | 'public';
+
+export interface Visit {
+  id: string;
+  user_id: string;
+  place_id: string;
+  arrived_at: string;
+  visibility: VisitVisibility;
+  note?: string | null;
+  place?: CheckInPlace | null;
+}
+
+export type Panel = 'friends' | 'places' | 'world' | 'messages' | 'settings' | 'add' | 'notifications' | null;
 
 export interface FriendshipRow {
   id: string;

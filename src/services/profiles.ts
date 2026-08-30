@@ -70,3 +70,41 @@ export async function getGhostMode(ownerId: string): Promise<GhostMode> {
   if (error && error.code !== '42P01') throw error;
   return (data?.mode as GhostMode) || 'precise';
 }
+
+/** Per-friend override; `null` clears it so the account default applies again. */
+export async function setFriendGhostMode(ownerId: string, viewerId: string, mode: GhostMode | null) {
+  await supabase.from('location_privacy').delete().eq('owner_id', ownerId).eq('viewer_id', viewerId);
+  if (!mode) return;
+  const { error } = await supabase.from('location_privacy').insert({
+    owner_id: ownerId,
+    viewer_id: viewerId,
+    mode,
+    updated_at: new Date().toISOString(),
+  });
+  if (error && error.code !== '42P01') throw error;
+}
+
+export async function getFriendGhostModes(ownerId: string): Promise<Record<string, GhostMode>> {
+  const { data, error } = await supabase
+    .from('location_privacy')
+    .select('viewer_id,mode')
+    .eq('owner_id', ownerId)
+    .not('viewer_id', 'is', null);
+  if (error) {
+    if (error.code === '42P01') return {};
+    throw error;
+  }
+  const modes: Record<string, GhostMode> = {};
+  for (const row of (data || []) as { viewer_id: string; mode: GhostMode }[]) {
+    modes[row.viewer_id] = row.mode;
+  }
+  return modes;
+}
+
+export async function updateBattery(userId: string, level: number, charging: boolean) {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ battery_level: Math.round(level * 100), is_charging: charging, last_active_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) throw error;
+}
