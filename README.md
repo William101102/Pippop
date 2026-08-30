@@ -1,51 +1,67 @@
 # Pinpop
 
-A privacy-first social map inspired by the playful parts of Zenly. Pinpop is now split into a
-React/TypeScript web frontend and a versioned Supabase backend.
+A Zenly-style social map. Friends show up live, you can wave, chat, and see
+who is actually sharing. The same React UI is the website **and** the App Store
+app (Capacitor). GitHub Pages is only the invite link for people who do not
+have the app yet.
 
-## Included in the web foundation
+<p align="center">
+  <img src="docs/preview.png" alt="Pinpop phone preview: live map, friend rail, and dock" width="360" />
+</p>
 
-- Original Pinpop app icon and PWA icon set
-- Photo avatar upload through a locked-down Supabase Storage bucket
-- Photo-based map pins, profile cards and friend rows
-- Playful social-map visual system for desktop and mobile
-- Responsive live friend map and presence cards
-- Friend discovery, messages and quick reactions
-- What's Up interaction entry point
-- Precise, blurred and frozen Ghost Mode UI
-- Places, check-ins and personal-world foundations
-- Footprint/history data model and private analytics UI
-- Hardened database policies, blocks and expiring highlights
-- Preview mode so UI work is testable without production data
+<p align="center">
+  <a href="https://william101102.github.io/zenly-app/?preview=1">Open the live preview</a>
+  · no account needed
+</p>
 
-## Structure
+Green rings mean someone is sharing a live fix. Gray rings mean they hid their
+location or have not moved in a while.
 
-```text
-src/                         React web application
-backend/supabase/migrations/ Database schema and RLS policies
-.github/workflows/           Build and GitHub Pages deployment
-```
+## Run it locally
 
-## Local development
+You need Node 20+ and npm.
 
 ```bash
-cp .env.example .env.local
+git clone https://github.com/William101102/zenly-app.git
+cd zenly-app
 npm install
 npm run dev
 ```
 
-Add the public Supabase URL and anon key to `.env.local`. Never expose a service-role key.
+Then open [http://127.0.0.1:5173/?preview=1](http://127.0.0.1:5173/?preview=1).
 
-Run the Supabase migrations in filename order on a development project before production. The
-avatar migration creates a public-read `avatars` bucket with owner-only writes. The auth bootstrap
-migration creates a profile for new Auth users and repairs older Auth users missing a profile.
+On a laptop the page is a phone frame (that is the app, not a marketing site).
+`?preview=1` loads demo friends around Santa Monica so you can click around
+without Supabase keys.
 
-## Deployment
+```text
+npm run test        # unit tests
+npm run typecheck   # TypeScript
+```
 
-Set repository variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, then enable GitHub
-Pages with GitHub Actions as its source. Every push to `main` builds and deploys `dist/`.
+### Real accounts (optional)
 
-## Product roadmap
+The preview above is enough to see the product. To sign in for real:
 
-The browser cannot provide dependable background location or native push notifications.
-Those features will be delivered by a React Native/Expo mobile client against this same backend.
+1. Copy `.env.example` to `.env.local` and put in your Supabase URL + anon key.
+2. Run `backend/supabase/setup.sql` in the Supabase SQL editor.
+3. Restart `npm run dev` and open [http://127.0.0.1:5173/](http://127.0.0.1:5173/)
+   (no `?preview=1`).
+
+| Variable | Where |
+|---|---|
+| `VITE_SUPABASE_URL` | `.env.local` and GitHub Actions vars |
+| `VITE_SUPABASE_ANON_KEY` | same |
+| `VITE_PUBLIC_APP_URL` | optional; invite links when running inside the app |
+
+## iOS / App Store
+
+Same UI, wrapped as `com.pinpop.app`. Full steps:
+[`ios-setup/README.md`](ios-setup/README.md).
+
+```text
+src/                         React UI (web + native)
+ios-setup/                   Info.plist permissions, icons, URL scheme
+backend/supabase/            Schema, RLS, push edge function
+docs/preview.png             Screenshot used in this README
+```

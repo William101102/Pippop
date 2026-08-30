@@ -1,3 +1,4 @@
+import { Geolocation } from '@capacitor/geolocation';
 import { BackgroundGeolocation } from './backgroundGeolocation';
 import { isNative } from './native';
 
@@ -38,6 +39,40 @@ export function createFixGate() {
     commit(fix: Fix) {
       last = { at: Date.now(), lat: fix.lat, lng: fix.lng };
     },
+  };
+}
+
+/**
+ * One-shot fix for the locate button. The background watcher is already
+ * running, so callers should prefer the last known fix and only hit this when
+ * that is missing.
+ */
+export async function getCurrentFix(): Promise<Fix> {
+  if (isNative) {
+    const pos = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 15_000,
+    });
+    return {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy,
+      speed: pos.coords.speed,
+    };
+  }
+  if (!navigator.geolocation) throw new Error('geolocation unavailable');
+  const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 15_000,
+      maximumAge: 0,
+    });
+  });
+  return {
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude,
+    accuracy: pos.coords.accuracy,
+    speed: pos.coords.speed,
   };
 }
 

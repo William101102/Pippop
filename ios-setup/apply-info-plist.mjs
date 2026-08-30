@@ -25,8 +25,21 @@ const ENTRIES = [
   ],
   ['NSPhotoLibraryUsageDescription', '<string>选择一张照片作为你的 Pinpop 头像。</string>'],
   ['NSCameraUsageDescription', '<string>拍一张照片作为你的 Pinpop 头像。</string>'],
-  ['UIBackgroundModes', '<array>\n\t\t<string>location</string>\n\t</array>'],
+  ['UIBackgroundModes', '<array>\n\t\t<string>location</string>\n\t\t<string>remote-notification</string>\n\t</array>'],
   ['UIViewControllerBasedStatusBarAppearance', '<false/>'],
+  [
+    'CFBundleURLTypes',
+    `<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.pinpop.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pinpop</string>
+			</array>
+		</dict>
+	</array>`,
+  ],
 ];
 
 if (!existsSync(PLIST)) {

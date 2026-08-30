@@ -37,6 +37,9 @@ npm run ios:open    # 用 Xcode 打开
 `ios/` 目录是生成物，已在 `.gitignore` 里忽略；权限文案由
 `ios-setup/apply-info-plist.mjs` 注入，可重复执行，所以重新生成工程不会丢配置。
 
+自定义 URL scheme 是 `pinpop://`。装好 App 后，`pinpop://add/用户名` 和网页上的
+`?add=用户名` 一样会打开加好友页。
+
 ## 在 Xcode 里要设置的
 
 - **Signing & Capabilities**：选你的 Team，Bundle Identifier 用 `com.pinpop.app`

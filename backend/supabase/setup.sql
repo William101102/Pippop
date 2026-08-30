@@ -696,6 +696,107 @@ returns void language sql security definer set search_path = public as $$
 $$;
 
 -- ----------------------------------------------------------------------------
+-- Push delivery. The triggers below are only created when pg_net is available,
+-- because calling an Edge Function from a trigger needs it. Without pg_net the
+-- app still works; friends just do not get notified while it is closed.
+--
+-- Before this does anything you must set the project URL and service key once:
+--   select set_config('app.settings.supabase_url', 'https://xxx.supabase.co', false);
+-- Persist them instead with:
+--   alter database postgres set app.settings.supabase_url = 'https://xxx.supabase.co';
+--   alter database postgres set app.settings.service_role_key = 'eyJ...';
+-- ----------------------------------------------------------------------------
+create or replace function public.notify_push(
+  p_user_id uuid,
+  p_title text,
+  p_body text
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  base_url text := current_setting('app.settings.supabase_url', true);
+  service_key text := current_setting('app.settings.service_role_key', true);
+begin
+  if base_url is null or service_key is null then
+    return;
+  end if;
+  if to_regproc('net.http_post') is null then
+    return;
+  end if;
+
+  perform net.http_post(
+    url := base_url || '/functions/v1/send-push',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || service_key
+    ),
+    body := jsonb_build_object('user_id', p_user_id, 'title', p_title, 'body', p_body)
+  );
+exception when others then
+  -- A failed notification must never roll back the message that caused it.
+  return;
+end;
+$$;
+
+create or replace function public.push_on_message()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  sender_name text;
+begin
+  select coalesce(nullif(display_name, ''), '@' || username)
+    into sender_name from public.profiles where id = new.sender_id;
+
+  perform public.notify_push(
+    new.recipient_id,
+    coalesce(sender_name, '朋友'),
+    case new.kind
+      when 'wave' then '向你挥手了 👋'
+      when 'whats_up' then '问你在干什么 👀'
+      else left(coalesce(new.body, ''), 120)
+    end
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists messages_push on public.messages;
+create trigger messages_push
+  after insert on public.messages
+  for each row execute function public.push_on_message();
+
+-- Arrival notices fan out to everyone who can still see the mover's location.
+create or replace function public.push_on_place_event()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  mover_name text;
+  friend_id uuid;
+begin
+  select coalesce(nullif(display_name, ''), '@' || username)
+    into mover_name from public.profiles where id = new.user_id;
+
+  for friend_id in
+    select case when f.requester_id = new.user_id then f.addressee_id else f.requester_id end
+      from public.friendships f
+     where f.status = 'accepted'
+       and (f.requester_id = new.user_id or f.addressee_id = new.user_id)
+  loop
+    if public.shares_location_with(new.user_id, friend_id) then
+      perform public.notify_push(
+        friend_id,
+        coalesce(mover_name, '朋友'),
+        (case new.kind when 'arrive' then '到了 ' else '离开了 ' end)
+          || coalesce(nullif(new.label, ''), '某个地方')
+      );
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists place_events_push on public.place_events;
+create trigger place_events_push
+  after insert on public.place_events
+  for each row execute function public.push_on_place_event();
+
+-- ----------------------------------------------------------------------------
 -- In-app account deletion. App Store guideline 5.1.1(v) requires this for any
 -- app that lets users create an account, and deleting from auth.users needs
 -- privileges the anon role does not have, hence security definer.

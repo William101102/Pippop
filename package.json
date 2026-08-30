@@ -10,9 +10,10 @@
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",
     "build:native": "CAP_BUILD=1 tsc -b && CAP_BUILD=1 vite build",
-    "ios:add": "npx cap add ios && node ios-setup/apply-info-plist.mjs",
-    "ios:plist": "node ios-setup/apply-info-plist.mjs",
-    "ios:sync": "npm run build:native && npx cap sync ios && node ios-setup/apply-info-plist.mjs",
+    "ios:add": "npx cap add ios && npm run ios:configure",
+    "ios:configure": "node ios-setup/apply-info-plist.mjs && node ios-setup/install-assets.mjs",
+    "ios:assets": "python3 ios-setup/generate-icons.py",
+    "ios:sync": "npm run build:native && npx cap sync ios && npm run ios:configure",
     "ios:open": "npx cap open ios"
   },
   "dependencies": {

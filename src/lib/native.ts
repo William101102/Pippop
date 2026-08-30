@@ -97,3 +97,25 @@ export function onAppResume(callback: () => void) {
 export async function openAppSettings() {
   await quietly(() => BackgroundGeolocation.openSettings());
 }
+
+/**
+ * Cold-start Universal Links / custom schemes land here rather than in
+ * window.location, which inside Capacitor is always capacitor://localhost.
+ */
+export function onAppUrlOpen(callback: (url: string) => void) {
+  if (!isNative) return () => undefined;
+  const handle = CapacitorApp.addListener('appUrlOpen', ({ url }) => callback(url));
+  return () => {
+    void handle.then((listener) => listener.remove());
+  };
+}
+
+export async function getLaunchUrl() {
+  if (!isNative) return '';
+  try {
+    const result = await CapacitorApp.getLaunchUrl();
+    return result?.url || '';
+  } catch {
+    return '';
+  }
+}

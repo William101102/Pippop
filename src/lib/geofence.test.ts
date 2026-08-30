@@ -11,7 +11,7 @@ const HOME: SignificantPlace = {
 };
 
 const OFFICE: SignificantPlace = {
-  kind: 'work',
+  kind: 'overnight',
   label: '公司',
   lat: 37.3917,
   lng: -121.8929,

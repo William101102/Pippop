@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
-  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed, LogOut,
-  MapPin, MessageCircle, Search, Send, Share2, SmilePlus, Sparkles, Star, Users, X,
+  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed,
+  LogOut, MapPin, MessageCircle, Search, Share2, Sparkles, Star, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
@@ -13,17 +13,21 @@ import { FootprintsPanel } from './components/FootprintsPanel';
 import { FriendRail } from './components/FriendRail';
 import { NearbyPanel } from './components/NearbyPanel';
 import { NotificationsPanel, type UnreadPreview } from './components/NotificationsPanel';
+import { PersonCard } from './components/PersonCard';
 import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
 import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
-import { friendShareText, inviteText, inviteUrl, shareText } from './lib/geo';
+import { fmtDist, fmtSpeed } from './lib/format';
+import { friendShareText, haversineKm, inviteText, inviteUrl, shareText, usernameFromInviteUrl } from './lib/geo';
 import { createGeofenceTracker } from './lib/geofence';
-import { createFixGate, watchLocation } from './lib/location';
-import { dismissSplash, haptic, isNative, onAppResume, openAppSettings } from './lib/native';
+import { createFixGate, getCurrentFix, watchLocation } from './lib/location';
+import { dismissSplash, getLaunchUrl, haptic, isNative, onAppResume, onAppUrlOpen, openAppSettings } from './lib/native';
+import { clearPushBadge, registerPush, unregisterPush } from './lib/push';
 import { isConfigured, supabase } from './lib/supabase';
+import { publishWidgetSnapshot } from './lib/widget';
 import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
 import {
-  REACTION_EMOJI, loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend,
+  loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend,
 } from './services/social';
 import { loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
@@ -36,7 +40,9 @@ import type {
   Friend, FriendRequest, GhostMode, HeatCell, LiveLocation, MapReaction, Message, NearbyPlace,
   Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility,
 } from './types';
+import { demoFriends, demoLocation, demoMe } from './dev/demo';
 import { useBattery } from './hooks/useBattery';
+import { useDraggableSheet } from './hooks/useDraggableSheet';
 import { useMessages } from './hooks/useMessages';
 import { useRealtime } from './hooks/useRealtime';
 import { useSignificantPlaces } from './hooks/useSignificantPlaces';
@@ -50,6 +56,11 @@ const CATEGORY_ICON: Record<string, string> = {
 
 // Past this, a friend's pin is their last known spot rather than a live one.
 const STALE_AFTER_MS = 30 * 60 * 1000;
+
+/** The product is a phone app. Desktop only gets a device frame, not a website layout. */
+function useBottomSheetLayout() {
+  return true;
+}
 
 function ago(iso?: string) {
   if (!iso) return '暂无位置';
@@ -68,13 +79,15 @@ function isUserUuid(id: string) { return UUID_RE.test(id); }
 /** Reads the `?add=username` invite deep link once on boot. */
 function readInviteQuery() {
   try {
-    return new URLSearchParams(window.location.search).get('add')?.trim() || '';
+    return usernameFromInviteUrl(window.location.href)
+      || new URLSearchParams(window.location.search).get('add')?.trim()
+      || '';
   } catch {
     return '';
   }
 }
 
-function AuthScreen() {
+function AuthScreen({ onPreview }: { onPreview: () => void }) {
   const [signup, setSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -123,6 +136,8 @@ function AuthScreen() {
         {message && <div className="form-message">{message}</div>}
         <button className="primary wide" disabled={busy} onClick={submit}>{busy ? '请稍候…' : signup ? '注册' : '登录'}</button>
         <button className="text-button" type="button" onClick={() => setSignup(!signup)}>{signup ? '已经有账号？登录' : '第一次来？创建账号'}</button>
+        <div className="rule"><span>或者</span></div>
+        <button className="preview-button" type="button" onClick={onPreview}><Sparkles size={17} /> 先看看 App 长什么样</button>
       </section>
     </main>
   );
@@ -133,6 +148,12 @@ function App() {
   const [signedIn, setSignedIn] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [preview, setPreview] = useState(() => {
+    try {
+      if (new URLSearchParams(window.location.search).has('preview')) return true;
+    } catch { /* ignore */ }
+    return document.body.classList.contains('phone-preview');
+  });
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [requestBusy, setRequestBusy] = useState<Set<string>>(new Set());
@@ -141,8 +162,8 @@ function App() {
   const [inviteQuery, setInviteQuery] = useState('');
   const [location, setLocation] = useState<LiveLocation | null>(null);
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>('friends');
-  const [selected, setSelected] = useState<Friend | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [ghostMode, setGhostMode] = useState<GhostMode>('precise');
   const [friendModes, setFriendModes] = useState<Record<string, GhostMode>>({});
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
@@ -162,7 +183,7 @@ function App() {
   const [heatCells, setHeatCells] = useState<HeatCell[]>([]);
   const [myReactions, setMyReactions] = useState<MapReaction[]>([]);
   const [placeEvents, setPlaceEvents] = useState<PlaceEvent[]>([]);
-  const [quickDraft, setQuickDraft] = useState('');
+  const isBottomSheet = useBottomSheetLayout();
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -175,13 +196,23 @@ function App() {
   const geofence = useRef(createGeofenceTracker());
   const locationRef = useRef<LiveLocation | null>(null);
   locationRef.current = location;
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
 
-  const { places, recordFix } = useSignificantPlaces(profile?.id, signedIn && Boolean(profile));
+  const liveId = preview ? undefined : profile?.id;
+  const { places, recordFix } = useSignificantPlaces(liveId, Boolean(liveId));
   const {
     threads, unread, totalUnread, chatWith,
     openChat, closeChat, send, wave, waveAll, whatsUp, pushIncoming, refreshUnread,
-  } = useMessages(profile?.id);
-  useBattery(profile?.id);
+  } = useMessages(liveId);
+  useBattery(liveId);
+
+  // Derived from the live friends list so the card updates as their pin moves,
+  // instead of freezing the snapshot from the tap that opened it.
+  const selected = useMemo(
+    () => friends.find(f => f.id === selectedId) ?? null,
+    [friends, selectedId],
+  );
 
   // Single choke point for user-facing feedback, so it is also where the app
   // earns its haptics. Failures read as 失败/错误/不能/需要 in this codebase.
@@ -193,7 +224,8 @@ function App() {
 
   const switchPanel = useCallback((next: Panel) => {
     haptic('select');
-    setPanel(next);
+    setSelectedId(null);
+    setPanel(current => (current === next ? null : next));
   }, []);
 
   const reloadFriends = useCallback(async (userId: string) => {
@@ -224,7 +256,7 @@ function App() {
   }, []);
 
   useRealtime({
-    meId: profile?.id,
+    meId: liveId,
     onFriendsChange: () => {
       if (profile?.id) reloadFriends(profile.id).catch(() => undefined);
     },
@@ -236,27 +268,31 @@ function App() {
 
   useEffect(() => {
     const invite = readInviteQuery();
-    if (!invite) return;
-    setInviteQuery(invite);
-    // Drop the param so a refresh does not reopen the add-friend sheet.
+    if (invite) setInviteQuery(invite);
     try {
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      if (invite) window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     } catch {
       // history rewriting is cosmetic
     }
+    const apply = (url: string) => {
+      const name = usernameFromInviteUrl(url);
+      if (name) setInviteQuery(name);
+    };
+    void getLaunchUrl().then(apply);
+    return onAppUrlOpen(apply);
   }, []);
 
   // Feed own fixes into private overnight-place history.
   useEffect(() => {
-    if (!location || !profile) return;
+    if (preview || !location || !profile) return;
     recordFix(location.lat, location.lng, location.updated_at).catch(() => undefined);
-  }, [location, profile, recordFix]);
+  }, [preview, location, profile, recordFix]);
 
   // Arrival notices are detected here rather than on the viewer's device,
   // because significant places are private: only this client can tell that a
   // coordinate means "公司". Frozen mode should not broadcast movement at all.
   useEffect(() => {
-    if (!location || !profile || places.length === 0) return;
+    if (preview || !location || !profile || places.length === 0) return;
     if (ghostMode === 'frozen') return;
     const transition = geofence.current.update(location.lat, location.lng, places);
     if (!transition) return;
@@ -274,7 +310,7 @@ function App() {
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       setSignedIn(Boolean(next));
       setSessionReady(true);
-      if (!next) {
+      if (!next && !previewRef.current) {
         setProfile(null);
         setProfileLoaded(false);
         setFriends([]);
@@ -284,7 +320,7 @@ function App() {
         setMyVisits([]);
         setNearbyPlaces([]);
         setFriendModes({});
-        setPanel('friends');
+        setPanel(null);
         didAutoFocus.current = false;
       }
     });
@@ -292,6 +328,15 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (preview) {
+      setProfile(demoMe);
+      setFriends(demoFriends);
+      setLocation(demoLocation);
+      setProfileLoaded(true);
+      setSessionReady(true);
+      setPanel(null);
+      return;
+    }
     if (!signedIn) {
       setProfile(null);
       setProfileLoaded(false);
@@ -319,7 +364,7 @@ function App() {
       }
       setProfileLoaded(true);
     })();
-  }, [signedIn, reloadFriends]);
+  }, [signedIn, reloadFriends, preview]);
 
   // Open the add-friend sheet automatically when arriving from an invite link.
   useEffect(() => {
@@ -358,6 +403,13 @@ function App() {
     pt.y += SHEET_OFFSET_PX;
     map.current.flyTo(map.current.unproject(pt, z), z, { animate: true, duration: 0.8 });
   }, []);
+
+  const openFriend = useCallback((friend: Friend) => {
+    haptic('select');
+    setSelectedId(friend.id);
+    setPanel(null);
+    if (friend.location) focusMapOn(friend.location.lat, friend.location.lng);
+  }, [focusMapOn]);
 
   useEffect(() => {
     if (!mapNode || map.current) return;
@@ -435,17 +487,31 @@ function App() {
   // Friends' pins go stale while the app is suspended and realtime is dropped,
   // so treat coming back to the foreground as a refresh.
   useEffect(() => {
-    if (!profile?.id) return;
+    if (preview || !profile?.id) return;
     const meId = profile.id;
     const refresh = () => {
       reloadFriends(meId).catch(() => undefined);
       refreshUnread();
       loadMyReactions(meId).then(setMyReactions).catch(() => undefined);
       loadPlaceEvents().then(setPlaceEvents).catch(() => undefined);
+      clearPushBadge();
     };
     refresh();
     return onAppResume(refresh);
-  }, [profile?.id, reloadFriends, refreshUnread]);
+  }, [preview, profile?.id, reloadFriends, refreshUnread]);
+
+  useEffect(() => {
+    publishWidgetSnapshot(friends).catch(() => undefined);
+  }, [friends]);
+
+  // Registered only once there is a profile, so the single permission prompt
+  // iOS allows is spent on someone who has actually finished signing up.
+  useEffect(() => {
+    if (preview || !profile?.id) return;
+    let cleanup: (() => void) | undefined;
+    registerPush(profile.id).then((fn) => { cleanup = fn; });
+    return () => cleanup?.();
+  }, [preview, profile?.id]);
 
   // Only the newest reaction from the last few minutes rides along on the pin;
   // older ones stay in the notifications feed.
@@ -469,19 +535,21 @@ function App() {
       const face = p.avatar_url
         ? `<img src="${safeHtml(p.avatar_url)}" alt="" referrerpolicy="no-referrer">`
         : `<span>${safeHtml(initials(p.display_name))}</span>`;
-      // A friend who stopped reporting still shows their last known spot, so
-      // label it with its age instead of passing it off as live.
-      const stale = !mine && Date.now() - new Date(l.updated_at).getTime() > STALE_AFTER_MS;
-      // Reactions land on your own pin, which is where the sender aimed them.
+      // Green ring = this person is sharing a live fix. Gray ring = they froze
+      // sharing, or their last ping is old enough that it is only a last-seen.
+      const hidden = (mine ? ghostMode : p.ghost_mode) === 'frozen';
+      const stale = Date.now() - new Date(l.updated_at).getTime() > STALE_AFTER_MS;
+      const live = !hidden && !stale;
       const reaction = mine ? freshReaction : undefined;
+      const moving = fmtSpeed(l.speed);
       const icon = L.divIcon({
         className: 'person-pin-shell',
-        html: `<div class="person-pin ${mine ? 'mine' : ''} ${stale ? 'stale' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b>${stale ? `<i>${safeHtml(ago(l.updated_at))}</i>` : ''}${reaction ? `<u class="pin-reaction">${safeHtml(reaction)}</u>` : ''}</div>`,
+        html: `<div class="person-pin ${mine ? 'mine' : ''} ${live ? 'live' : 'away'}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b>${live ? (moving ? `<i class="pin-speed">${safeHtml(moving)}</i>` : '') : `<i>${safeHtml(ago(l.updated_at))}</i>`}${reaction ? `<u class="pin-reaction">${safeHtml(reaction)}</u>` : ''}</div>`,
         iconSize: [70, 82],
         iconAnchor: [35, 76],
       });
       const marker = L.marker([l.lat, l.lng], { icon, zIndexOffset: mine ? 1000 : 0 }).addTo(layers.current!);
-      if (!mine) marker.on('click', () => { const f = friends.find(x => x.id === p.id); if (f) setSelected(f); });
+      if (!mine) marker.on('click', () => { const f = friends.find(x => x.id === p.id); if (f) openFriend(f); });
     });
     // Private overnight places, visible only to the signed-in user.
     places.forEach(p => {
@@ -503,7 +571,7 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -400 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, places, nearbyPlaces, mapReady, freshReaction]);
+  }, [friends, location, profile, places, nearbyPlaces, mapReady, freshReaction, openFriend, ghostMode]);
 
   // Plain circles rather than a heatmap plugin: with history bucketed into grid
   // cells server side, one translucent circle per cell already reads as heat and
@@ -548,25 +616,20 @@ function App() {
 
   async function locateMe() {
     if (locating || !profile) return;
+    haptic('light');
+    if (location) {
+      map.current?.flyTo([location.lat, location.lng], 16, { animate: true, duration: 0.8 });
+      return;
+    }
     setLocating(true);
     try {
-      if (!navigator.geolocation) {
-        notify('当前浏览器不支持定位');
-        return;
-      }
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
-        });
-      });
+      const fix = await getCurrentFix();
       const next: LiveLocation = {
         user_id: profile.id,
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-        speed: pos.coords.speed,
+        lat: fix.lat,
+        lng: fix.lng,
+        accuracy: fix.accuracy,
+        speed: fix.speed,
         updated_at: new Date().toISOString(),
       };
       setLocation(next);
@@ -584,11 +647,10 @@ function App() {
         notify('无法获取当前位置，已回到上次保存的位置');
         return;
       }
-      if (error instanceof GeolocationPositionError && error.code === error.PERMISSION_DENIED) {
-        notify('请在浏览器设置中允许 Pinpop 使用位置信息');
-      } else {
-        notify('暂时无法获取位置，请开启定位权限后重试');
-      }
+      const denied = error instanceof GeolocationPositionError && error.code === error.PERMISSION_DENIED;
+      if (denied && isNative) notify('请在系统设置中允许 Pinpop 使用位置');
+      else if (denied) notify('请在浏览器设置中允许 Pinpop 使用位置信息');
+      else notify('暂时无法获取位置，请开启定位权限后重试');
     } finally {
       setLocating(false);
     }
@@ -665,6 +727,13 @@ function App() {
     }
   }
 
+  async function signOut() {
+    // Drop the push token first, or a shared device keeps getting this user's
+    // notifications after they hand it over.
+    if (profile) await unregisterPush(profile.id).catch(() => undefined);
+    await supabase.auth.signOut();
+  }
+
   async function toggleBestFriend(friend: Friend) {
     if (!profile) return;
     const pinned = !friend.is_best_friend;
@@ -676,7 +745,6 @@ function App() {
         if (a.is_best_friend !== b.is_best_friend) return a.is_best_friend ? -1 : 1;
         return (b.streak_days ?? 0) - (a.streak_days ?? 0);
       }));
-    setSelected(current => (current?.id === friend.id ? { ...current, is_best_friend: pinned } : current));
     try {
       await setBestFriend(profile.id, friend.id, pinned);
     } catch (error) {
@@ -781,10 +849,28 @@ function App() {
 
   const notificationCount = requests.length + totalUnread + myReactions.length;
 
-  if (!sessionReady) {
+  const nearest = useMemo(() => {
+    if (!location) return null;
+    let best: { friend: Friend; km: number } | null = null;
+    for (const f of friends) {
+      if (!f.location) continue;
+      const km = haversineKm(location.lat, location.lng, f.location.lat, f.location.lng);
+      if (!best || km < best.km) best = { friend: f, km };
+    }
+    return best;
+  }, [friends, location]);
+
+  // The sheet only becomes a draggable bottom sheet at the width where the CSS
+  // actually docks it to the bottom edge.
+  const sheetDrag = useDraggableSheet({
+    onDismiss: () => setPanel(null),
+    enabled: isBottomSheet,
+  });
+
+  if (!sessionReady && !preview) {
     return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
   }
-  if (!signedIn) return <AuthScreen />;
+  if (!signedIn && !preview) return <AuthScreen onPreview={() => setPreview(true)} />;
   if (!profileLoaded) {
     return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
   }
@@ -842,6 +928,14 @@ function App() {
       )}
       {locationLabel && <div className="location-label">{locationLabel}</div>}
 
+      {nearest && !selected && !panel && (
+        <button className="map-mood" type="button" onClick={() => openFriend(nearest.friend)}>
+          <span>{nearest.friend.status_emoji} {nearest.friend.display_name}</span>
+          <b>{fmtDist(nearest.km)}</b>
+          <small>{ago(nearest.friend.location?.updated_at)}</small>
+        </button>
+      )}
+
       <header className="topbar">
         <button className="profile-chip" type="button" onClick={() => setPanel('world')}>
           <Avatar profile={profile} />
@@ -849,6 +943,9 @@ function App() {
           <ChevronDown size={16} />
         </button>
         <div className="top-actions">
+          {preview && (
+            <button className="demo-badge" type="button" onClick={() => setPreview(false)}>预览</button>
+          )}
           <button className="circle-button" type="button" onClick={() => setPanel('notifications')} aria-label="通知">
             <Bell size={20} />
             {notificationCount > 0 && <span className="dot-badge">{notificationCount > 9 ? '9+' : notificationCount}</span>}
@@ -876,6 +973,20 @@ function App() {
           {totalUnread > 0 && <span className="dot-badge">{totalUnread > 9 ? '9+' : totalUnread}</span>}
         </button>
       </nav>
+
+      {!panel && !selected && !chatFriend && (
+        <div className="map-peek">
+          <FriendRail
+            me={profile}
+            friends={friends}
+            unread={unread}
+            activeId={null}
+            onSelectMe={() => { setSelectedId(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
+            onSelectFriend={openFriend}
+            onAddFriend={() => setPanel('add')}
+          />
+        </div>
+      )}
 
       {panel === 'add' && (
         <AddFriendPanel
@@ -905,8 +1016,8 @@ function App() {
       )}
 
       {panel && panel !== 'add' && copy && (
-        <aside className="sheet">
-          <div className="grabber" />
+        <aside className={`sheet ${sheetDrag.sheetProps.className}`} style={sheetDrag.sheetProps.style}>
+          <div className="grabber-hit" {...sheetDrag.handleProps}><div className="grabber" /></div>
           <div className="sheet-head">
             <div>
               <div className="eyebrow">{copy.eyebrow}</div>
@@ -923,20 +1034,31 @@ function App() {
                 friends={friends}
                 unread={unread}
                 activeId={selected?.id ?? null}
-                onSelectMe={() => { setSelected(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
-                onSelectFriend={(f) => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}
+                onSelectMe={() => { setSelectedId(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
+                onSelectFriend={openFriend}
                 onAddFriend={() => setPanel('add')}
               />
               <div className="search"><Search size={18} /><input placeholder="搜索朋友" value={search} onChange={e => setSearch(e.target.value)} /></div>
               <div className="friend-list">
                 {filtered.length === 0 && (
                   <div className="empty-state">
-                    <p className="muted empty-hint">{friends.length ? '没有匹配的朋友' : '还没有朋友'}</p>
-                    <button className="primary compact" type="button" onClick={() => setPanel('add')}>添加朋友</button>
+                    <span className="empty-art">{friends.length ? '🔍' : '👋'}</span>
+                    {friends.length ? (
+                      <>
+                        <b>没有匹配的朋友</b>
+                        <p>试试别的名字，或者用 @用户名 搜索。</p>
+                      </>
+                    ) : (
+                      <>
+                        <b>还没有朋友</b>
+                        <p>把你的名片链接发给朋友，他们点开就能直接加你。</p>
+                        <button className="primary compact" type="button" onClick={() => setPanel('add')}>添加朋友</button>
+                      </>
+                    )}
                   </div>
                 )}
                 {filtered.map(f => (
-                  <button className="friend-row" key={f.id} type="button" onClick={() => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}>
+                  <button className="friend-row" key={f.id} type="button" onClick={() => openFriend(f)}>
                     <Avatar profile={f} showStatus />
                     <div>
                       <b>
@@ -947,7 +1069,11 @@ function App() {
                       <small>@{f.username} · {f.status_text}</small>
                     </div>
                     <div className="friend-meta">
-                      <span>{ago(f.location?.updated_at)}</span>
+                      <span>
+                        {location && f.location
+                          ? fmtDist(haversineKm(location.lat, location.lng, f.location.lat, f.location.lng))
+                          : ago(f.location?.updated_at)}
+                      </span>
                       <small>{f.is_charging && <BatteryCharging size={13} />} {f.battery_level != null ? `${f.battery_level}%` : ''}</small>
                     </div>
                   </button>
@@ -967,7 +1093,7 @@ function App() {
               places={nearbyPlaces}
               loading={nearbyLoading}
               onCheckIn={() => setCheckInOpen(true)}
-              onSelectFriend={(f) => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}
+              onSelectFriend={openFriend}
               onFocusPlace={focusMapOn}
             />
           )}
@@ -1070,8 +1196,8 @@ function App() {
                 <div><b>过夜地点仅你可见</b><small>晚数和位置只保存在你自己的账号下</small></div>
               </div>
 
-              <button className="danger-button" type="button" onClick={() => supabase.auth.signOut()}>
-                <LogOut size={17} /> 退出登录
+              <button className="danger-button" type="button" onClick={preview ? () => setPreview(false) : signOut}>
+                <LogOut size={17} /> {preview ? '退出预览' : '退出登录'}
               </button>
             </div>
           )}
@@ -1173,67 +1299,25 @@ function App() {
       )}
 
       {selected && (
-        <section className="person-card">
-          <button className="close-button" type="button" onClick={() => setSelected(null)}><X size={18} /></button>
-          <button
-            className={`best-friend-toggle ${selected.is_best_friend ? 'on' : ''}`}
-            type="button"
-            onClick={() => toggleBestFriend(selected)}
-            aria-label={selected.is_best_friend ? '取消置顶好友' : '设为置顶好友'}
-          >
-            <Star size={17} />
-          </button>
-          <Avatar profile={selected} className="big-avatar" showStatus />
-          <h2>{selected.display_name}</h2>
-          <p>@{selected.username} · {ago(selected.location?.updated_at)}</p>
-          {(selected.streak_days ?? 0) > 0 && (
-            <div className="streak-badge">🔥 连续互动 {selected.streak_days} 天</div>
-          )}
-          <div className="presence">
-            <span className="pulse" />
-            <b>{selected.status_text}</b>
-            {selected.battery_level != null && <small>{selected.battery_level}% 电量</small>}
-          </div>
-          <div className="reaction-row">
-            {REACTION_EMOJI.map(emoji => (
-              <button key={emoji} type="button" onClick={() => reactTo(selected, emoji)}>{emoji}</button>
-            ))}
-          </div>
-          <div className="person-actions">
-            <button type="button" onClick={async () => {
-              const result = await wave(selected.id);
-              notify(result.error || `已向 ${selected.display_name} 挥手 👋`);
-            }}><SmilePlus /><span>打招呼</span></button>
-            <button type="button" onClick={async () => {
-              const result = await whatsUp(selected.id);
-              notify(result.error || `已问 ${selected.display_name} 在干什么 👀`);
-            }}><Sparkles /><span>What&apos;s Up</span></button>
-            <button type="button" onClick={() => { openChat(selected.id); setSelected(null); }}><MessageCircle /><span>聊天</span></button>
-            <button type="button" onClick={() => shareCard(selected)}><Share2 /><span>分享名片</span></button>
-          </div>
-          <div className="quick-message">
-            <input
-              placeholder={`给 ${selected.display_name} 发消息…`}
-              value={quickDraft}
-              onChange={e => setQuickDraft(e.target.value)}
-              onKeyDown={async (e) => {
-                if (e.key !== 'Enter' || !quickDraft.trim()) return;
-                const result = await send(selected.id, quickDraft);
-                if (result.error) notify(result.error);
-                else { setQuickDraft(''); openChat(selected.id); setSelected(null); }
-              }}
-            />
-            <button
-              type="button"
-              onClick={async () => {
-                if (!quickDraft.trim()) return;
-                const result = await send(selected.id, quickDraft);
-                if (result.error) notify(result.error);
-                else { setQuickDraft(''); openChat(selected.id); setSelected(null); }
-              }}
-            ><Send size={18} /></button>
-          </div>
-        </section>
+        <PersonCard
+          person={selected}
+          myLocation={location}
+          onClose={() => setSelectedId(null)}
+          onChat={() => { openChat(selected.id); setSelectedId(null); }}
+          onWave={async () => {
+            const result = await wave(selected.id);
+            notify(result.error || `已向 ${selected.display_name} 挥手 👋`);
+          }}
+          onWhatsUp={async () => {
+            const result = await whatsUp(selected.id);
+            notify(result.error || `已问 ${selected.display_name} 在干什么 👀`);
+          }}
+          onShare={() => shareCard(selected)}
+          onReact={(emoji) => reactTo(selected, emoji)}
+          onToggleBest={() => toggleBestFriend(selected)}
+          onSend={(text) => send(selected.id, text)}
+          onError={notify}
+        />
       )}
 
       {chatFriend && (
