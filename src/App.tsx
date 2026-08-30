@@ -18,6 +18,7 @@ import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
 import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
 import { fmtDist, fmtSpeed } from './lib/format';
+import { clusterByPixels } from './lib/cluster';
 import { friendShareText, haversineKm, inviteText, inviteUrl, shareText, usernameFromInviteUrl } from './lib/geo';
 import { createGeofenceTracker } from './lib/geofence';
 import { createFixGate, getCurrentFix, watchLocation } from './lib/location';
@@ -187,6 +188,7 @@ function App() {
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapZoom, setMapZoom] = useState(14);
   const map = useRef<L.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null);
   // Separate layer so toggling the heatmap never rebuilds the person pins.
@@ -449,10 +451,14 @@ function App() {
     const t1 = window.setTimeout(resize, 60);
     const t2 = window.setTimeout(resize, 400);
     setMapReady(true);
+    setMapZoom(instance.getZoom());
+    const syncZoom = () => setMapZoom(instance.getZoom());
+    instance.on('zoomend', syncZoom);
 
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      instance.off('zoomend', syncZoom);
       observer.disconnect();
       window.removeEventListener('resize', resize);
       tileLayerRef.current = null;
@@ -529,8 +535,34 @@ function App() {
       { p: profile, l: location, mine: true },
       ...friends.map(p => ({ p, l: p.location })),
     ];
-    people.forEach(({ p, l, mine }) => {
-      if (!l) return;
+    const located = people.filter((row): row is { p: Profile | Friend; l: LiveLocation; mine?: boolean } => Boolean(row.l));
+    // Same-screen overlap becomes a count bubble. Zooming in splits them again
+    // because this uses layer pixels, not kilometres.
+    const projected = located.map((row) => {
+      const pt = map.current!.latLngToLayerPoint(L.latLng(row.l.lat, row.l.lng));
+      return { x: pt.x, y: pt.y, data: row };
+    });
+    clusterByPixels(projected, 58).forEach((group) => {
+      if (group.items.length > 1) {
+        const lat = group.items.reduce((sum, row) => sum + row.l.lat, 0) / group.items.length;
+        const lng = group.items.reduce((sum, row) => sum + row.l.lng, 0) / group.items.length;
+        const count = group.items.length;
+        const large = count > 4;
+        const icon = L.divIcon({
+          className: 'people-cluster-shell',
+          html: `<div class="people-cluster${large ? ' lg' : ''}">${count}</div>`,
+          iconSize: large ? [60, 60] : [52, 52],
+          iconAnchor: large ? [30, 30] : [26, 26],
+        });
+        L.marker([lat, lng], { icon, zIndexOffset: 800 })
+          .on('click', () => {
+            const bounds = L.latLngBounds(group.items.map(row => L.latLng(row.l.lat, row.l.lng)));
+            map.current?.fitBounds(bounds.pad(0.55), { maxZoom: 17, animate: true, duration: 0.55 });
+          })
+          .addTo(layers.current!);
+        return;
+      }
+      const { p, l, mine } = group.items[0];
       const color = /^#[0-9a-f]{6}$/i.test(p.avatar_color) ? p.avatar_color : '#ff6658';
       const face = p.avatar_url
         ? `<img src="${safeHtml(p.avatar_url)}" alt="" referrerpolicy="no-referrer">`
@@ -571,7 +603,7 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -400 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, places, nearbyPlaces, mapReady, freshReaction, openFriend, ghostMode]);
+  }, [friends, location, profile, places, nearbyPlaces, mapReady, mapZoom, freshReaction, openFriend, ghostMode]);
 
   // Plain circles rather than a heatmap plugin: with history bucketed into grid
   // cells server side, one translucent circle per cell already reads as heat and

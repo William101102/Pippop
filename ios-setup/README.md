@@ -1,7 +1,7 @@
 # 把 Pinpop 发到 App Store
 
 网页版继续照常部署到 GitHub Pages，同一份代码通过 Capacitor 打包成原生 iOS 应用。
-不需要重写 UI。
+不需要重写 UI。本地怎么跑、上架清单的英文版在仓库根目录 [`README.md`](../README.md)。
 
 ## 你必须自己做的两件事
 

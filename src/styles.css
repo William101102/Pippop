@@ -273,6 +273,20 @@ button { color: inherit; }
 .person-pin.away { filter: drop-shadow(0 6px 7px rgba(44,34,71,.18)) grayscale(.35); opacity: .86; }
 .person-pin.away i, .person-pin i.pin-speed { position: absolute; z-index: 4; left: 50%; bottom: 4px; padding: 2px 7px; border-radius: 9px; background: rgba(38,26,64,.82); color: #fff; box-shadow: 0 2px 6px rgba(38,26,64,.28); font-size: 10px; font-style: normal; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
 .person-pin i.pin-speed { background: var(--violet); }
+.people-cluster-shell { border: 0 !important; background: none !important; }
+.people-cluster {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(145deg, #5b35f2, #ff3f8e);
+  box-shadow: 0 10px 24px rgba(45,31,75,.3);
+  font: 800 18px/1 'Fredoka', 'DM Sans', sans-serif;
+}
+.people-cluster.lg { width: 60px; height: 60px; font-size: 22px; }
 
 /* Reusable avatars */
 .avatar-photo { --avatar-color: var(--coral); position: relative; display: grid; flex: 0 0 auto; place-items: center; width: 46px; height: 46px; overflow: visible; border: 3px solid #fff; border-radius: 16px; color: #fff; background: var(--avatar-color); box-shadow: 0 5px 13px rgba(53,37,91,.16); font-weight: 900; }
