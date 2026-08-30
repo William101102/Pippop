@@ -1,0 +1,9 @@
+{
+  "name": "Pinpop",
+  "short_name": "Pinpop",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f1eb",
+  "theme_color": "#ff6658",
+  "icons": []
+}
