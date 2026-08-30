@@ -9,8 +9,7 @@ export async function signInWithPassword(email: string, password: string) {
 
   const { data: prof } = await supabase.from('profiles').select('id').eq('id', data.user!.id).maybeSingle();
   if (!prof) {
-    await supabase.auth.signOut();
-    return { error: '这个邮箱还没注册，请先在「注册」里创建账号', needsSignup: true, email };
+    return { session: data.session, needsProfile: true };
   }
   return { session: data.session };
 }

@@ -37,10 +37,27 @@ Never commit a service-role key.
 
 ## Database
 
-1. Run original [`schema.sql`](./schema.sql) on a **development** Supabase project.
-2. Review [`backend/supabase/scripts/review_duplicate_friendships.sql`](./backend/supabase/scripts/review_duplicate_friendships.sql).
-3. Apply migrations in [`backend/supabase/migrations/`](./backend/supabase/migrations/) **on dev first**.
-4. Ghost Mode enforcement lives in `202608300002_ghost_mode_locations.sql` (`friend_locations` view).
+Your project: **nzqgkbibuqnfbxfarswu** (`https://nzqgkbibuqnfbxfarswu.supabase.co`)
+
+### First-time CLI setup (you run locally)
+
+```bash
+npx supabase login
+bash scripts/supabase-push.sh
+```
+
+This links the repo and runs `supabase db push` for migrations in `supabase/migrations/`.
+
+> If tables already exist from manual `schema.sql`, only the **new** migrations (pinpop_core, ghost_mode) will apply.
+
+### Manual alternative
+
+1. Run original [`schema.sql`](./schema.sql) if starting fresh.
+2. Paste migrations from [`supabase/migrations/`](./supabase/migrations/) into Supabase SQL Editor (dev project first).
+
+### Email signup blocked?
+
+In Supabase Dashboard → **Authentication → Providers → Email**, turn off **Confirm email** for easier testing.
 
 The legacy single-file app is preserved at [`legacy/index.html`](./legacy/index.html).
 

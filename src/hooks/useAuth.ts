@@ -42,6 +42,7 @@ export function useAuth() {
   const login = useCallback(async (email: string, password: string) => {
     const result = await signInWithPassword(email, password);
     if (result.error) return result;
+    if (result.session) setSession(result.session);
     if (result.session?.user) await refreshProfile(result.session.user.id);
     return result;
   }, [refreshProfile]);
