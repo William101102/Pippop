@@ -458,6 +458,36 @@ button { color: inherit; }
 .chip.selected { border-color: transparent; color: #fff; background: linear-gradient(135deg, var(--coral), var(--pink)); }
 .chip-row.tight { margin: 0; gap: 4px; }
 .chip-row.tight .chip { padding: 6px 8px; font-size: 10px; }
+/* Best friends, streaks and reactions */
+.best-friend-toggle { position: absolute; z-index: 3; top: 14px; left: 14px; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; color: #c0b8cc; background: #f2eef5; cursor: pointer; transition: color .15s ease, background .15s ease; }
+.best-friend-toggle.on { color: #8a5a00; background: linear-gradient(135deg, #ffe08a, #ffd34e); }
+.best-star { color: #f5b323; vertical-align: -1px; margin-right: 3px; }
+.streak-chip { margin-left: 6px; padding: 1px 5px; border-radius: 7px; background: #fff0e6; color: #c25a2a; font-size: 9.5px; font-style: normal; font-weight: 800; }
+.streak-badge { display: inline-flex; align-items: center; margin: 0 auto 4px; padding: 5px 12px; border-radius: 12px; background: linear-gradient(135deg, #fff1e4, #ffe6f1); color: #c25a2a; font-size: 11px; font-weight: 800; }
+.reaction-row { display: flex; justify-content: center; gap: 5px; margin: 4px 0 2px; }
+.reaction-row button { width: 38px; height: 38px; border: 1px solid #efe9f4; border-radius: 13px; background: #fbf9fd; font-size: 17px; line-height: 1; cursor: pointer; transition: transform .12s ease, background .15s ease; }
+.reaction-row button:hover { background: #f4eefb; }
+.reaction-avatar { display: grid; place-items: center; background: #fff3e8 !important; font-size: 19px; }
+.person-pin u.pin-reaction { position: absolute; z-index: 5; left: -6px; top: -10px; display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 9px rgba(41,25,72,.24); font-size: 14px; text-decoration: none; animation: pop-in .3s cubic-bezier(.2,1.5,.4,1); }
+@keyframes pop-in { from { transform: scale(0); } }
+
+/* Footprints */
+.footprints-panel { display: grid; gap: 10px; }
+.heat-toggle { display: flex; align-items: center; gap: 11px; width: 100%; padding: 12px 14px; border: 1px solid #efe9f4; border-radius: 18px; color: inherit; background: #fbf9fd; text-align: left; cursor: pointer; }
+.heat-toggle.on { border-color: #ffd0b8; background: linear-gradient(135deg, #fff3ea, #ffeaf3); color: #b5372a; }
+.heat-toggle div { display: grid; gap: 2px; }
+.heat-toggle b { font-size: 12px; font-weight: 800; }
+.heat-toggle small { color: var(--muted); font-size: 10px; font-weight: 600; }
+.heat-toggle.on small { color: #b5726a; }
+.footprint-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.footprint-stats > div { display: grid; gap: 3px; padding: 11px 8px; border-radius: 16px; background: #f7f4fa; text-align: center; }
+.footprint-stats b { font-family: 'Fredoka'; font-size: 17px; letter-spacing: -.5px; }
+.footprint-stats small { color: var(--muted); font-size: 9.5px; font-weight: 700; }
+.footprint-rank { display: grid; flex: 0 0 auto; place-items: center; width: 30px; height: 30px; border-radius: 11px; color: #fff; background: linear-gradient(135deg, var(--coral), var(--pink)); font-size: 12px; font-weight: 900; }
+.muted-icon { flex: 0 0 auto; color: #c4bcd0; }
+.spin { animation: spin 1s linear infinite; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .danger-button { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 4px; padding: 13px; border: 1px solid #f3dde2; border-radius: 16px; color: #c0392b; background: #fff5f6; font-size: 12px; font-weight: 800; cursor: pointer; }
 .danger-button.solid { border-color: #c0392b; color: #fff; background: #c0392b; }
 .danger-zone { display: grid; gap: 8px; padding: 12px; border: 1px solid #f3dde2; border-radius: 20px; background: #fffafa; }

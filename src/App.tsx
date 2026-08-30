@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed, LogOut,
-  MapPin, MessageCircle, Search, Send, Share2, SmilePlus, Sparkles, Users, X,
+  MapPin, MessageCircle, Search, Send, Share2, SmilePlus, Sparkles, Star, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
 import { ChatPanel } from './components/ChatPanel';
 import { CheckInPanel } from './components/CheckInPanel';
 import { CompleteProfileScreen } from './components/CompleteProfileScreen';
+import { FootprintsPanel } from './components/FootprintsPanel';
 import { FriendRail } from './components/FriendRail';
 import { NearbyPanel } from './components/NearbyPanel';
 import { NotificationsPanel, type UnreadPreview } from './components/NotificationsPanel';
@@ -16,10 +17,14 @@ import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
 import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
 import { friendShareText, inviteText, inviteUrl, shareText } from './lib/geo';
+import { createGeofenceTracker } from './lib/geofence';
 import { createFixGate, watchLocation } from './lib/location';
 import { dismissSplash, haptic, isNative, onAppResume, openAppSettings } from './lib/native';
 import { isConfigured, supabase } from './lib/supabase';
 import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
+import {
+  REACTION_EMOJI, loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend,
+} from './services/social';
 import { loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
@@ -28,8 +33,8 @@ import {
   setFriendGhostMode, setGhostMode as persistGhostMode, updateStatus,
 } from './services/profiles';
 import type {
-  Friend, FriendRequest, GhostMode, LiveLocation, Message, NearbyPlace, Panel, PlaceCategory,
-  Profile, Visit, VisitVisibility,
+  Friend, FriendRequest, GhostMode, HeatCell, LiveLocation, MapReaction, Message, NearbyPlace,
+  Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility,
 } from './types';
 import { useBattery } from './hooks/useBattery';
 import { useMessages } from './hooks/useMessages';
@@ -153,14 +158,21 @@ function App() {
   const [locationDenied, setLocationDenied] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [heatVisible, setHeatVisible] = useState(false);
+  const [heatCells, setHeatCells] = useState<HeatCell[]>([]);
+  const [myReactions, setMyReactions] = useState<MapReaction[]>([]);
+  const [placeEvents, setPlaceEvents] = useState<PlaceEvent[]>([]);
   const [quickDraft, setQuickDraft] = useState('');
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const map = useRef<L.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null);
+  // Separate layer so toggling the heatmap never rebuilds the person pins.
+  const heatLayer = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const didAutoFocus = useRef(false);
+  const geofence = useRef(createGeofenceTracker());
   const locationRef = useRef<LiveLocation | null>(null);
   locationRef.current = location;
 
@@ -202,6 +214,15 @@ function App() {
     pushIncoming(msg);
   }, [pushIncoming]);
 
+  const handleReaction = useCallback((reaction: MapReaction) => {
+    haptic('medium');
+    setMyReactions(current => [reaction, ...current].slice(0, 30));
+  }, []);
+
+  const handlePlaceEvent = useCallback((event: PlaceEvent) => {
+    setPlaceEvents(current => [event, ...current].slice(0, 40));
+  }, []);
+
   useRealtime({
     meId: profile?.id,
     onFriendsChange: () => {
@@ -209,6 +230,8 @@ function App() {
     },
     onFriendLocation: handleFriendLocation,
     onMessage: handleIncomingMessage,
+    onReaction: handleReaction,
+    onPlaceEvent: handlePlaceEvent,
   });
 
   useEffect(() => {
@@ -228,6 +251,23 @@ function App() {
     if (!location || !profile) return;
     recordFix(location.lat, location.lng, location.updated_at).catch(() => undefined);
   }, [location, profile, recordFix]);
+
+  // Arrival notices are detected here rather than on the viewer's device,
+  // because significant places are private: only this client can tell that a
+  // coordinate means "公司". Frozen mode should not broadcast movement at all.
+  useEffect(() => {
+    if (!location || !profile || places.length === 0) return;
+    if (ghostMode === 'frozen') return;
+    const transition = geofence.current.update(location.lat, location.lng, places);
+    if (!transition) return;
+    recordPlaceEvent(
+      profile.id,
+      transition.kind,
+      transition.place.label,
+      transition.place.lat,
+      transition.place.lng,
+    ).catch(() => undefined);
+  }, [location, profile, places, ghostMode]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSignedIn(Boolean(data.session)); setSessionReady(true); });
@@ -345,6 +385,8 @@ function App() {
     });
     tileLayer.addTo(instance);
     tileLayerRef.current = tileLayer;
+    // Heat sits under the pins so avatars stay legible on top of it.
+    heatLayer.current = L.layerGroup().addTo(instance);
     layers.current = L.layerGroup().addTo(instance);
 
     const resize = () => instance.invalidateSize();
@@ -362,6 +404,7 @@ function App() {
       observer.disconnect();
       window.removeEventListener('resize', resize);
       tileLayerRef.current = null;
+      heatLayer.current = null;
       layers.current = null;
       map.current = null;
       setMapReady(false);
@@ -394,11 +437,24 @@ function App() {
   useEffect(() => {
     if (!profile?.id) return;
     const meId = profile.id;
-    return onAppResume(() => {
+    const refresh = () => {
       reloadFriends(meId).catch(() => undefined);
       refreshUnread();
-    });
+      loadMyReactions(meId).then(setMyReactions).catch(() => undefined);
+      loadPlaceEvents().then(setPlaceEvents).catch(() => undefined);
+    };
+    refresh();
+    return onAppResume(refresh);
   }, [profile?.id, reloadFriends, refreshUnread]);
+
+  // Only the newest reaction from the last few minutes rides along on the pin;
+  // older ones stay in the notifications feed.
+  const freshReaction = useMemo(() => {
+    const recent = myReactions.find(
+      r => Date.now() - new Date(r.created_at).getTime() < 5 * 60_000,
+    );
+    return recent?.emoji;
+  }, [myReactions]);
 
   useEffect(() => {
     if (!mapReady || !layers.current || !profile) return;
@@ -416,9 +472,11 @@ function App() {
       // A friend who stopped reporting still shows their last known spot, so
       // label it with its age instead of passing it off as live.
       const stale = !mine && Date.now() - new Date(l.updated_at).getTime() > STALE_AFTER_MS;
+      // Reactions land on your own pin, which is where the sender aimed them.
+      const reaction = mine ? freshReaction : undefined;
       const icon = L.divIcon({
         className: 'person-pin-shell',
-        html: `<div class="person-pin ${mine ? 'mine' : ''} ${stale ? 'stale' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b>${stale ? `<i>${safeHtml(ago(l.updated_at))}</i>` : ''}</div>`,
+        html: `<div class="person-pin ${mine ? 'mine' : ''} ${stale ? 'stale' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b>${stale ? `<i>${safeHtml(ago(l.updated_at))}</i>` : ''}${reaction ? `<u class="pin-reaction">${safeHtml(reaction)}</u>` : ''}</div>`,
         iconSize: [70, 82],
         iconAnchor: [35, 76],
       });
@@ -445,7 +503,30 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -400 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, places, nearbyPlaces, mapReady]);
+  }, [friends, location, profile, places, nearbyPlaces, mapReady, freshReaction]);
+
+  // Plain circles rather than a heatmap plugin: with history bucketed into grid
+  // cells server side, one translucent circle per cell already reads as heat and
+  // keeps the bundle from growing for a single overlay.
+  useEffect(() => {
+    if (!mapReady || !heatLayer.current) return;
+    const group = heatLayer.current;
+    group.clearLayers();
+    if (!heatVisible || heatCells.length === 0) return;
+
+    const busiest = Math.max(...heatCells.map(c => c.hits));
+    heatCells.forEach(cell => {
+      // Square-root keeps a single very frequent cell from flattening the rest.
+      const weight = Math.sqrt(cell.hits / busiest);
+      L.circleMarker([cell.lat, cell.lng], {
+        radius: 9 + weight * 15,
+        stroke: false,
+        fillColor: weight > 0.66 ? '#ff3f8e' : weight > 0.33 ? '#ff8a3d' : '#ffd34e',
+        fillOpacity: 0.16 + weight * 0.4,
+        interactive: false,
+      }).addTo(group);
+    });
+  }, [heatVisible, heatCells, mapReady]);
 
   const refreshNearby = useCallback(async () => {
     const current = locationRef.current;
@@ -584,6 +665,37 @@ function App() {
     }
   }
 
+  async function toggleBestFriend(friend: Friend) {
+    if (!profile) return;
+    const pinned = !friend.is_best_friend;
+    haptic(pinned ? 'success' : 'light');
+    // Optimistic, and re-sorted the same way the server bundle arrives.
+    setFriends(current => current
+      .map(f => (f.id === friend.id ? { ...f, is_best_friend: pinned } : f))
+      .sort((a, b) => {
+        if (a.is_best_friend !== b.is_best_friend) return a.is_best_friend ? -1 : 1;
+        return (b.streak_days ?? 0) - (a.streak_days ?? 0);
+      }));
+    setSelected(current => (current?.id === friend.id ? { ...current, is_best_friend: pinned } : current));
+    try {
+      await setBestFriend(profile.id, friend.id, pinned);
+    } catch (error) {
+      setFriends(current => current.map(f => (f.id === friend.id ? { ...f, is_best_friend: !pinned } : f)));
+      notify(error instanceof Error ? error.message : '操作失败');
+    }
+  }
+
+  async function reactTo(friend: Friend, emoji: string) {
+    if (!profile) return;
+    haptic('medium');
+    try {
+      await sendReaction(profile.id, friend.id, emoji);
+      notify(`已给 ${friend.display_name} 发了 ${emoji}`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '表情没发出去');
+    }
+  }
+
   async function confirmDeleteAccount() {
     setDeleting(true);
     try {
@@ -667,7 +779,7 @@ function App() {
     [friends, unread, threads],
   );
 
-  const notificationCount = requests.length + totalUnread;
+  const notificationCount = requests.length + totalUnread + myReactions.length;
 
   if (!sessionReady) {
     return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
@@ -826,7 +938,14 @@ function App() {
                 {filtered.map(f => (
                   <button className="friend-row" key={f.id} type="button" onClick={() => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}>
                     <Avatar profile={f} showStatus />
-                    <div><b>{f.display_name}</b><small>@{f.username} · {f.status_text}</small></div>
+                    <div>
+                      <b>
+                        {f.is_best_friend && <Star size={12} className="best-star" />}
+                        {f.display_name}
+                        {(f.streak_days ?? 0) > 0 && <i className="streak-chip">🔥{f.streak_days}</i>}
+                      </b>
+                      <small>@{f.username} · {f.status_text}</small>
+                    </div>
                     <div className="friend-meta">
                       <span>{ago(f.location?.updated_at)}</span>
                       <small>{f.is_charging && <BatteryCharging size={13} />} {f.battery_level != null ? `${f.battery_level}%` : ''}</small>
@@ -857,9 +976,13 @@ function App() {
             <NotificationsPanel
               requests={requests}
               unreadPreviews={unreadPreviews}
+              reactions={myReactions}
+              placeEvents={placeEvents}
+              friends={friends}
               busyIds={requestBusy}
               onRespond={respondToRequest}
               onOpenChat={(id) => { openChat(id); setPanel(null); }}
+              onFocusEvent={(lat, lng) => { setPanel(null); focusMapOn(lat, lng); }}
             />
           )}
 
@@ -907,7 +1030,15 @@ function App() {
                 </div>
               )}
 
-              <div className="eyebrow">自动足迹</div>
+              <div className="eyebrow">足迹与热力图</div>
+              <FootprintsPanel
+                heatVisible={heatVisible}
+                onToggleHeat={(next) => { haptic('select'); setHeatVisible(next); }}
+                onHeatLoaded={setHeatCells}
+                onFocusPlace={focusMapOn}
+              />
+
+              <div className="eyebrow">过夜地点</div>
               {places.length === 0 ? (
                 <p className="muted empty-hint">还没有足迹数据，开着 App 时会自动记录你的常去地点。</p>
               ) : (
@@ -1044,13 +1175,29 @@ function App() {
       {selected && (
         <section className="person-card">
           <button className="close-button" type="button" onClick={() => setSelected(null)}><X size={18} /></button>
+          <button
+            className={`best-friend-toggle ${selected.is_best_friend ? 'on' : ''}`}
+            type="button"
+            onClick={() => toggleBestFriend(selected)}
+            aria-label={selected.is_best_friend ? '取消置顶好友' : '设为置顶好友'}
+          >
+            <Star size={17} />
+          </button>
           <Avatar profile={selected} className="big-avatar" showStatus />
           <h2>{selected.display_name}</h2>
           <p>@{selected.username} · {ago(selected.location?.updated_at)}</p>
+          {(selected.streak_days ?? 0) > 0 && (
+            <div className="streak-badge">🔥 连续互动 {selected.streak_days} 天</div>
+          )}
           <div className="presence">
             <span className="pulse" />
             <b>{selected.status_text}</b>
             {selected.battery_level != null && <small>{selected.battery_level}% 电量</small>}
+          </div>
+          <div className="reaction-row">
+            {REACTION_EMOJI.map(emoji => (
+              <button key={emoji} type="button" onClick={() => reactTo(selected, emoji)}>{emoji}</button>
+            ))}
           </div>
           <div className="person-actions">
             <button type="button" onClick={async () => {

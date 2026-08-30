@@ -198,6 +198,55 @@ create table if not exists public.whats_up_requests (
 );
 
 -- ----------------------------------------------------------------------------
+-- Social layer
+-- ----------------------------------------------------------------------------
+
+-- An emoji dropped onto a friend's pin. Short lived so the map stays readable.
+create table if not exists public.map_reactions (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  target_id uuid not null references public.profiles(id) on delete cascade,
+  emoji text not null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '1 hour')
+);
+
+-- Pinned favourites, per direction: marking someone does not mark you back.
+create table if not exists public.best_friends (
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  friend_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (owner_id, friend_id),
+  check (owner_id <> friend_id)
+);
+
+-- Streaks live on the friendship because that table already holds exactly one
+-- row per pair, so a streak cannot disagree with itself between directions.
+alter table public.friendships add column if not exists streak_days integer not null default 0;
+alter table public.friendships add column if not exists longest_streak integer not null default 0;
+alter table public.friendships add column if not exists last_interaction_on date;
+
+-- "小明 到了 公司". Written by the mover's own device, since only it knows which
+-- of the user's private significant places a fix corresponds to.
+create table if not exists public.place_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null check (kind in ('arrive', 'leave')),
+  label text not null default '',
+  lat double precision,
+  lng double precision,
+  created_at timestamptz not null default now()
+);
+
+-- One row per device. Tokens rotate, so the token itself is the identity.
+create table if not exists public.push_tokens (
+  token text primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  platform text not null default 'ios' check (platform in ('ios', 'android', 'web')),
+  updated_at timestamptz not null default now()
+);
+
+-- ----------------------------------------------------------------------------
 -- Indexes
 -- ----------------------------------------------------------------------------
 create unique index if not exists friendships_pair_unique
@@ -212,6 +261,14 @@ create index if not exists places_lat_lng_idx on public.places (lat, lng);
 create index if not exists places_created_by_idx on public.places (created_by);
 create index if not exists visits_user_time_idx on public.visits (user_id, arrived_at desc);
 create index if not exists visits_place_idx on public.visits (place_id, arrived_at desc);
+-- Heatmap and frequent places both group history by grid cell.
+create index if not exists location_history_cell_idx
+  on public.location_history (user_id, cell_lat, cell_lng);
+create index if not exists map_reactions_target_idx
+  on public.map_reactions (target_id, created_at desc);
+create index if not exists place_events_user_time_idx
+  on public.place_events (user_id, created_at desc);
+create index if not exists push_tokens_user_idx on public.push_tokens (user_id);
 
 -- ----------------------------------------------------------------------------
 -- Privacy helpers. Defined before the policies below because those reference
@@ -273,6 +330,10 @@ alter table public.visits enable row level security;
 alter table public.highlights enable row level security;
 alter table public.blocks enable row level security;
 alter table public.whats_up_requests enable row level security;
+alter table public.map_reactions enable row level security;
+alter table public.best_friends enable row level security;
+alter table public.place_events enable row level security;
+alter table public.push_tokens enable row level security;
 
 -- Profiles: every signed-in user can search others; you may only edit your own.
 drop policy if exists "authenticated read profiles" on public.profiles;
@@ -408,6 +469,43 @@ drop policy if exists "manage own blocks" on public.blocks;
 create policy "manage own blocks" on public.blocks for all
   using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
 
+-- Map reactions: sender and target can see them, friends only. Reuses the same
+-- visibility rule as locations so a blocked user cannot poke you on the map.
+drop policy if exists "read own reactions" on public.map_reactions;
+create policy "read own reactions" on public.map_reactions for select using (
+  auth.uid() = sender_id
+  or (auth.uid() = target_id and public.shares_location_with(sender_id, auth.uid()))
+);
+
+drop policy if exists "send reaction to friend" on public.map_reactions;
+create policy "send reaction to friend" on public.map_reactions for insert with check (
+  auth.uid() = sender_id and public.shares_location_with(target_id, auth.uid())
+);
+
+drop policy if exists "delete own reaction" on public.map_reactions;
+create policy "delete own reaction" on public.map_reactions for delete
+  using (auth.uid() = sender_id);
+
+-- Best friends are private to whoever pinned them.
+drop policy if exists "manage own best friends" on public.best_friends;
+create policy "manage own best friends" on public.best_friends for all
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+-- Place events: your own, plus friends' who still share location with you.
+drop policy if exists "read friend place events" on public.place_events;
+create policy "read friend place events" on public.place_events for select using (
+  auth.uid() = user_id or public.shares_location_with(user_id, auth.uid())
+);
+
+drop policy if exists "write own place events" on public.place_events;
+create policy "write own place events" on public.place_events for insert
+  with check (auth.uid() = user_id);
+
+-- Push tokens are never readable by other users; only the service role sends.
+drop policy if exists "manage own push tokens" on public.push_tokens;
+create policy "manage own push tokens" on public.push_tokens for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
 drop policy if exists "see own whats up" on public.whats_up_requests;
 create policy "see own whats up" on public.whats_up_requests for select
   using (auth.uid() in (sender_id, recipient_id));
@@ -483,6 +581,121 @@ create policy "users delete their own avatar" on storage.objects for delete to a
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ----------------------------------------------------------------------------
+-- Footprints. Reads only the caller's own history; the grid columns the client
+-- already writes make the aggregation cheap enough to run on demand.
+-- ----------------------------------------------------------------------------
+create or replace function public.my_heatmap(p_days integer default 30)
+returns table (cell_lat bigint, cell_lng bigint, lat double precision, lng double precision, hits bigint)
+language sql stable security definer set search_path = public as $$
+  select h.cell_lat, h.cell_lng, avg(h.lat), avg(h.lng), count(*)
+    from public.location_history h
+   where h.user_id = auth.uid()
+     and h.cell_lat is not null
+     and h.recorded_at > now() - make_interval(days => greatest(p_days, 1))
+   group by h.cell_lat, h.cell_lng
+   order by count(*) desc
+   limit 600;
+$$;
+
+/**
+ * Frequent places with a dwell estimate. Consecutive fixes in the same cell are
+ * treated as one stay, and gaps longer than an hour end it, so a phone that was
+ * simply switched off overnight does not read as a 12 hour visit.
+ */
+create or replace function public.my_frequent_places(p_days integer default 30)
+returns table (
+  cell_lat bigint,
+  cell_lng bigint,
+  lat double precision,
+  lng double precision,
+  visits bigint,
+  minutes numeric,
+  last_seen timestamptz
+) language sql stable security definer set search_path = public as $$
+  with fixes as (
+    select h.cell_lat, h.cell_lng, h.lat, h.lng, h.recorded_at,
+           lag(h.cell_lat) over w as prev_lat_cell,
+           lag(h.cell_lng) over w as prev_lng_cell,
+           lag(h.recorded_at) over w as prev_at
+      from public.location_history h
+     where h.user_id = auth.uid()
+       and h.cell_lat is not null
+       and h.recorded_at > now() - make_interval(days => greatest(p_days, 1))
+    window w as (order by h.recorded_at)
+  ), marked as (
+    select *,
+           case
+             when prev_lat_cell is distinct from cell_lat
+               or prev_lng_cell is distinct from cell_lng
+               or prev_at is null
+               or recorded_at - prev_at > interval '1 hour'
+             then 1 else 0
+           end as starts_stay
+      from fixes
+  ), grouped as (
+    select *, sum(starts_stay) over (order by recorded_at) as stay_id from marked
+  ), stays as (
+    select cell_lat, cell_lng, avg(lat) as lat, avg(lng) as lng,
+           min(recorded_at) as began, max(recorded_at) as ended
+      from grouped
+     group by stay_id, cell_lat, cell_lng
+  )
+  select cell_lat, cell_lng, avg(lat), avg(lng), count(*),
+         round(sum(extract(epoch from (ended - began)) / 60)::numeric, 1),
+         max(ended)
+    from stays
+   group by cell_lat, cell_lng
+   order by sum(extract(epoch from (ended - began))) desc, count(*) desc
+   limit 40;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- Interaction streaks. Bumped from a trigger on messages so the count cannot
+-- drift from the actual conversation, and kept symmetric by living on the pair.
+-- ----------------------------------------------------------------------------
+create or replace function public.touch_friend_streak()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  today date := (now() at time zone 'utc')::date;
+begin
+  update public.friendships f
+     set streak_days = case
+           when f.last_interaction_on = today then f.streak_days
+           when f.last_interaction_on = today - 1 then f.streak_days + 1
+           else 1
+         end,
+         last_interaction_on = today
+   where f.status = 'accepted'
+     and ((f.requester_id = new.sender_id and f.addressee_id = new.recipient_id)
+       or (f.addressee_id = new.sender_id and f.requester_id = new.recipient_id));
+
+  update public.friendships f
+     set longest_streak = f.streak_days
+   where f.streak_days > f.longest_streak
+     and ((f.requester_id = new.sender_id and f.addressee_id = new.recipient_id)
+       or (f.addressee_id = new.sender_id and f.requester_id = new.recipient_id));
+
+  return new;
+end;
+$$;
+
+drop trigger if exists messages_touch_streak on public.messages;
+create trigger messages_touch_streak
+  after insert on public.messages
+  for each row execute function public.touch_friend_streak();
+
+-- A streak only survives if it was touched today or yesterday; this clears the
+-- stale ones so the UI does not have to special case them.
+create or replace function public.expire_stale_streaks()
+returns void language sql security definer set search_path = public as $$
+  update public.friendships
+     set streak_days = 0
+   where streak_days > 0
+     and (last_interaction_on is null
+       or last_interaction_on < (now() at time zone 'utc')::date - 1);
+$$;
+
+-- ----------------------------------------------------------------------------
 -- In-app account deletion. App Store guideline 5.1.1(v) requires this for any
 -- app that lets users create an account, and deleting from auth.users needs
 -- privileges the anon role does not have, hence security definer.
@@ -510,6 +723,12 @@ $$;
 
 revoke all on function public.delete_my_account() from public, anon;
 grant execute on function public.delete_my_account() to authenticated;
+
+-- These are security definer, so they must not be callable by anon.
+revoke all on function public.my_heatmap(integer) from public, anon;
+revoke all on function public.my_frequent_places(integer) from public, anon;
+grant execute on function public.my_heatmap(integer) to authenticated;
+grant execute on function public.my_frequent_places(integer) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Every Auth user gets a profile, including ones created before this ran.
@@ -566,6 +785,10 @@ do $$ begin alter publication supabase_realtime add table public.locations;
 exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.friendships;
 exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.map_reactions;
+exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.place_events;
+exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.messages;
 exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.location_privacy;
@@ -598,6 +821,28 @@ union all select 'significant_places table',
        case when to_regclass('public.significant_places') is not null then 'ok' else 'MISSING' end
 union all select 'friend_locations view',
        case when to_regclass('public.friend_locations') is not null then 'ok' else 'MISSING' end
+union all select 'map_reactions table',
+       case when to_regclass('public.map_reactions') is not null then 'ok' else 'MISSING' end
+union all select 'best_friends table',
+       case when to_regclass('public.best_friends') is not null then 'ok' else 'MISSING' end
+union all select 'place_events table',
+       case when to_regclass('public.place_events') is not null then 'ok' else 'MISSING' end
+union all select 'push_tokens table',
+       case when to_regclass('public.push_tokens') is not null then 'ok' else 'MISSING' end
+union all select 'friendship streak columns',
+       case when exists (select 1 from information_schema.columns
+         where table_schema = 'public' and table_name = 'friendships' and column_name = 'streak_days')
+       then 'ok' else 'MISSING' end
+union all select 'delete_my_account()',
+       case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = 'delete_my_account') then 'ok' else 'MISSING' end
+union all select 'footprint functions',
+       case when (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname in ('my_heatmap', 'my_frequent_places')) = 2
+       then 'ok' else 'MISSING' end
+union all select 'streak trigger',
+       case when exists (select 1 from pg_trigger
+         where tgname = 'messages_touch_streak' and not tgisinternal) then 'ok' else 'MISSING' end
 union all select 'avatars storage bucket',
        case when exists (select 1 from storage.buckets where id = 'avatars') then 'ok' else 'MISSING' end
 union all select 'places insert policy',

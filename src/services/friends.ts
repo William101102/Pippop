@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { loadBestFriendIds } from './social';
 import type { Friend, FriendRequest, FriendshipRow, LiveLocation, Profile } from '../types';
 
 /**
@@ -49,14 +50,28 @@ export async function loadFriendsBundle(meId: string) {
   const friendIds = accepted.map((r) => (r.requester_id === meId ? r.addressee_id : r.requester_id));
   let friends: Friend[] = [];
   if (friendIds.length) {
-    const [{ data: profiles }, locations] = await Promise.all([
+    const [{ data: profiles }, locations, bestFriendIds] = await Promise.all([
       supabase.from('profiles').select('*').in('id', friendIds),
       fetchLocationsForUsers(friendIds),
+      loadBestFriendIds(meId),
     ]);
+    // The streak lives on the friendship row, which is already loaded above.
+    const streakByFriend = new Map<string, number>();
+    for (const rel of accepted as FriendshipRow[]) {
+      const other = rel.requester_id === meId ? rel.addressee_id : rel.requester_id;
+      streakByFriend.set(other, rel.streak_days ?? 0);
+    }
     friends = ((profiles || []) as Profile[]).map((p) => ({
       ...p,
       location: locations.find((l) => l.user_id === p.id) || null,
+      streak_days: streakByFriend.get(p.id) ?? 0,
+      is_best_friend: bestFriendIds.has(p.id),
     }));
+    // Best friends first, then the people you actually talk to.
+    friends.sort((a, b) => {
+      if (a.is_best_friend !== b.is_best_friend) return a.is_best_friend ? -1 : 1;
+      return (b.streak_days ?? 0) - (a.streak_days ?? 0);
+    });
   }
 
   return { friends, requests, sentIds };

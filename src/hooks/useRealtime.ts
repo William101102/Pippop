@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Message } from '../types';
+import type { MapReaction, Message, PlaceEvent } from '../types';
 
 export function useRealtime(opts: {
   meId?: string;
   onFriendsChange: () => void;
   onFriendLocation: (userId: string, row: Record<string, unknown> | null) => void;
   onMessage: (msg: Message) => void;
+  onReaction: (reaction: MapReaction) => void;
+  onPlaceEvent: (event: PlaceEvent) => void;
 }) {
-  const { meId, onFriendsChange, onFriendLocation, onMessage } = opts;
+  const { meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent } = opts;
 
   useEffect(() => {
     if (!meId) return;
@@ -25,9 +27,20 @@ export function useRealtime(opts: {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         onMessage(payload.new as Message);
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'map_reactions' }, (payload) => {
+        const reaction = payload.new as MapReaction;
+        // RLS already limits what is delivered, but own reactions echo back.
+        if (reaction.target_id !== meId) return;
+        onReaction(reaction);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'place_events' }, (payload) => {
+        const event = payload.new as PlaceEvent;
+        if (event.user_id === meId) return;
+        onPlaceEvent(event);
+      })
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [meId, onFriendsChange, onFriendLocation, onMessage]);
+  }, [meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent]);
 }

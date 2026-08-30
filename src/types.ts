@@ -25,6 +25,9 @@ export interface LiveLocation {
 export interface Friend extends Profile {
   location?: LiveLocation | null;
   ghost_mode?: GhostMode;
+  /** Consecutive days the two of you have exchanged a message. */
+  streak_days?: number;
+  is_best_friend?: boolean;
 }
 
 export interface FriendRequest {
@@ -79,4 +82,48 @@ export interface FriendshipRow {
   requester_id: string;
   addressee_id: string;
   status: 'pending' | 'accepted' | 'declined';
+  streak_days?: number;
+  longest_streak?: number;
+  last_interaction_on?: string | null;
+}
+
+/** One grid cell of your own history, used for the footprint heatmap. */
+export interface HeatCell {
+  cell_lat: number;
+  cell_lng: number;
+  lat: number;
+  lng: number;
+  hits: number;
+}
+
+export interface FrequentPlace {
+  cell_lat: number;
+  cell_lng: number;
+  lat: number;
+  lng: number;
+  visits: number;
+  minutes: number;
+  last_seen: string;
+  /** Filled in lazily by reverse geocoding, which is rate limited. */
+  label?: string;
+}
+
+export interface MapReaction {
+  id: string;
+  sender_id: string;
+  target_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+export type PlaceEventKind = 'arrive' | 'leave';
+
+export interface PlaceEvent {
+  id: string;
+  user_id: string;
+  kind: PlaceEventKind;
+  label: string;
+  lat?: number | null;
+  lng?: number | null;
+  created_at: string;
 }
