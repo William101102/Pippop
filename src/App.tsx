@@ -79,9 +79,13 @@ function pinAvatarSrc(url: string, version: number) {
   const join = url.includes('?') ? '&' : '?';
   return `${url}${join}pin=${version}`;
 }
+function cssBackgroundUrl(url: string) {
+  return url.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
 function pinFaceHtml(avatarUrl: string | null | undefined, displayName: string, version: number) {
   if (avatarUrl?.trim()) {
-    return `<img src="${safeHtml(pinAvatarSrc(avatarUrl, version))}" alt="" referrerpolicy="no-referrer" loading="eager">`;
+    const src = cssBackgroundUrl(pinAvatarSrc(avatarUrl, version));
+    return `<span class="pin-photo" style="background-image:url('${src}')"></span>`;
   }
   return `<span>${safeHtml(initials(displayName))}</span>`;
 }
@@ -718,6 +722,13 @@ function App() {
     if (!file || !profile) return;
     setAvatarBusy(true);
     try {
+      if (preview || !isUserUuid(profile.id)) {
+        const avatarUrl = URL.createObjectURL(file);
+        setProfile(current => current ? { ...current, avatar_url: avatarUrl } : current);
+        setPinAvatarVersion(version => version + 1);
+        notify('预览模式：新头像已经换好啦 ✨');
+        return;
+      }
       const avatarUrl = await uploadProfileAvatar(profile.id, file);
       setProfile(current => current ? { ...current, avatar_url: avatarUrl } : current);
       setFriends(current => current.map(f => f.id === profile.id ? { ...f, avatar_url: avatarUrl } : f));
@@ -748,9 +759,13 @@ function App() {
     if (!profile) return;
     const previous = ghostMode;
     setGhostMode(mode);
+    const label = GHOST_MODES.find(m => m.value === mode)?.title ?? mode;
+    if (preview || !isUserUuid(profile.id)) {
+      notify(`预览模式：已切换为${label}`);
+      return;
+    }
     try {
       await persistGhostMode(profile.id, mode, location ? { lat: location.lat, lng: location.lng } : undefined);
-      const label = GHOST_MODES.find(m => m.value === mode)?.title ?? mode;
       notify(`已切换为${label}，朋友看到的位置由服务端处理`);
     } catch (error) {
       setGhostMode(previous);

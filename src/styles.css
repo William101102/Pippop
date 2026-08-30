@@ -255,6 +255,7 @@ button { color: inherit; }
 .person-pin::before { content: ''; position: absolute; left: 6px; top: 0; width: 52px; height: 52px; border: 5px solid #fff; border-radius: 50% 50% 50% 10px; background: var(--pin); transform: rotate(-45deg); }
 .pin-face { position: absolute; z-index: 2; left: 12px; top: 6px; display: grid; place-items: center; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; color: #fff; background: var(--pin); font-size: 16px; font-weight: 900; }
 .pin-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pin-face .pin-photo { display: block; width: 100%; height: 100%; background-size: cover; background-position: center; background-repeat: no-repeat; }
 .person-pin b { position: absolute; z-index: 4; right: -8px; top: -8px; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(41,25,72,.2); font-size: 12px; }
 .person-pin::after {
   content: '';

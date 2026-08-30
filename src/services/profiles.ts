@@ -50,29 +50,20 @@ export async function searchProfiles(excludeId: string, query: string, limit = 2
 export async function setGhostMode(ownerId: string, mode: GhostMode, frozen?: { lat: number; lng: number }) {
   const row = {
     owner_id: ownerId,
-    viewer_id: null,
+    viewer_id: ownerId,
     mode,
     frozen_lat: mode === 'frozen' ? frozen?.lat ?? null : null,
     frozen_lng: mode === 'frozen' ? frozen?.lng ?? null : null,
     updated_at: new Date().toISOString(),
   };
 
-  const { data: existing, error: readError } = await supabase
-    .from('location_privacy')
-    .select('id')
-    .eq('owner_id', ownerId)
-    .is('viewer_id', null)
-    .maybeSingle();
-  if (readError && readError.code !== '42P01') throw readError;
+  const { error } = await supabase.from('location_privacy').upsert(row, {
+    onConflict: 'owner_id,viewer_id',
+  });
+  if (error) throw error;
 
-  if (existing?.id != null) {
-    const { error } = await supabase.from('location_privacy').update(row).eq('id', existing.id);
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await supabase.from('location_privacy').insert(row);
-  if (error && error.code !== '42P01') throw error;
+  // Legacy rows from the old null-viewer default are no longer used.
+  await supabase.from('location_privacy').delete().eq('owner_id', ownerId).is('viewer_id', null);
 }
 
 export async function getGhostMode(ownerId: string): Promise<GhostMode> {
@@ -80,10 +71,19 @@ export async function getGhostMode(ownerId: string): Promise<GhostMode> {
     .from('location_privacy')
     .select('mode')
     .eq('owner_id', ownerId)
-    .is('viewer_id', null)
+    .eq('viewer_id', ownerId)
     .maybeSingle();
   if (error && error.code !== '42P01') throw error;
-  return (data?.mode as GhostMode) || 'precise';
+  if (data?.mode) return data.mode as GhostMode;
+
+  const legacy = await supabase
+    .from('location_privacy')
+    .select('mode')
+    .eq('owner_id', ownerId)
+    .is('viewer_id', null)
+    .maybeSingle();
+  if (legacy.error && legacy.error.code !== '42P01') throw legacy.error;
+  return (legacy.data?.mode as GhostMode) || 'precise';
 }
 
 /** Per-friend override; `null` clears it so the account default applies again. */
@@ -107,21 +107,9 @@ export async function setFriendGhostMode(ownerId: string, viewerId: string, mode
     updated_at: new Date().toISOString(),
   };
 
-  const { data: existing, error: readError } = await supabase
-    .from('location_privacy')
-    .select('id')
-    .eq('owner_id', ownerId)
-    .eq('viewer_id', viewerId)
-    .maybeSingle();
-  if (readError && readError.code !== '42P01') throw readError;
-
-  if (existing?.id != null) {
-    const { error } = await supabase.from('location_privacy').update(row).eq('id', existing.id);
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await supabase.from('location_privacy').insert(row);
+  const { error } = await supabase.from('location_privacy').upsert(row, {
+    onConflict: 'owner_id,viewer_id',
+  });
   if (error && error.code !== '42P01') throw error;
 }
 
