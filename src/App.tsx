@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
-  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, LocateFixed, MapPin,
+  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed, MapPin,
   MessageCircle, Navigation, Search, Send, SmilePlus, Sparkles, Users, X,
 } from 'lucide-react';
+import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
 import { CompleteProfileScreen } from './components/CompleteProfileScreen';
-import { demoFriends, demoLocation, demoMe } from './data/demo';
-import { isConfigured, supabase } from './lib/supabase';
-import { uploadProfileAvatar } from './services/profile';
-import { completeProfile } from './services/profiles';
-import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { SHEET_OFFSET_PX } from './lib/constants';
+import { isConfigured, supabase } from './lib/supabase';
+import { loadFriendsBundle, sendFriendRequest } from './services/friends';
+import { getMyLastLocation, upsertMyLocation } from './services/locations';
+import { uploadProfileAvatar } from './services/profile';
+import { completeProfile, searchProfiles } from './services/profiles';
 import type { Friend, GhostMode, LiveLocation, Panel, Profile } from './types';
+
+const WORLD_CENTER: [number, number] = [20, 0];
+const WORLD_ZOOM = 2;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const modes: { value: GhostMode; title: string; detail: string; icon: string }[] = [
   { value: 'precise', title: '精确位置', detail: '实时显示你的准确位置', icon: '◎' },
@@ -32,8 +37,9 @@ function initials(name: string) { return name.trim().slice(0, 1).toUpperCase(); 
 function safeHtml(value: string) {
   return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
+function isUserUuid(id: string) { return UUID_RE.test(id); }
 
-function Auth({ onDemo }: { onDemo: () => void }) {
+function AuthScreen() {
   const [signup, setSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,9 +49,10 @@ function Auth({ onDemo }: { onDemo: () => void }) {
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!isConfigured) { setMessage('尚未配置 Supabase。可先进入预览模式。'); return; }
+    if (!isConfigured) { setMessage('尚未配置 Supabase，请联系管理员。'); return; }
     if (signup && (!displayName.trim() || !username.trim())) { setMessage('请填写昵称和用户名。'); return; }
-    setBusy(true); setMessage('');
+    setBusy(true);
+    setMessage('');
     const result = signup
       ? await supabase.auth.signUp({
           email,
@@ -58,72 +65,90 @@ function Auth({ onDemo }: { onDemo: () => void }) {
     else if (signup && !result.data.session) setMessage('注册成功，请检查邮箱确认链接。');
   }
 
-  return <main className="auth-shell">
-    <section className="auth-copy">
-      <div className="auth-brand"><img src="./icons/icon-192.png" alt="" /><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>
-      <div className="auth-hero-copy"><span className="hero-kicker">YOUR PEOPLE, RIGHT NOW</span><h1>地图不只是路。<br />是你们的世界。</h1><p>看看朋友在哪里、在做什么，然后一起出发。</p></div>
-      <div className="floating-face face-one">🛹</div><div className="floating-face face-two">☕️</div><div className="floating-face face-three">🎧</div>
-    </section>
-    <section className="auth-card">
-      <img className="mobile-auth-logo" src="./icons/icon-192.png" alt="Pinpop" />
-      <div className="eyebrow">欢迎来到 PINPOP</div>
-      <h2>{signup ? '创建你的世界' : '再次见到你真好'}</h2>
-      <p className="muted">{signup ? '注册后添加朋友，一起点亮地图。' : '登录后继续看看朋友们在哪里。'}</p>
-      {signup && <div className="name-fields"><label>昵称<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Leo" /></label><label>用户名<input value={username} onChange={e => setUsername(e.target.value)} placeholder="leo_01" /></label></div>}
-      <label>邮箱<input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@example.com" /></label>
-      <label>密码<input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="至少 6 位" /></label>
-      {message && <div className="form-message">{message}</div>}
-      <button className="primary wide" disabled={busy} onClick={submit}>{busy ? '请稍候…' : signup ? '注册' : '登录'}</button>
-      <button className="text-button" onClick={() => setSignup(!signup)}>{signup ? '已经有账号？登录' : '第一次来？创建账号'}</button>
-      <div className="rule"><span>或者</span></div>
-      <button className="preview-button" onClick={onDemo}><Sparkles size={17} /> 先看看新版长什么样</button>
-    </section>
-  </main>;
+  return (
+    <main className="auth-shell">
+      <section className="auth-copy">
+        <div className="auth-brand"><img src="./icons/icon-192.png" alt="" /><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>
+        <div className="auth-hero-copy"><span className="hero-kicker">YOUR PEOPLE, RIGHT NOW</span><h1>地图不只是路。<br />是你们的世界。</h1><p>看看朋友在哪里、在做什么，然后一起出发。</p></div>
+        <div className="floating-face face-one">🛹</div><div className="floating-face face-two">☕️</div><div className="floating-face face-three">🎧</div>
+      </section>
+      <section className="auth-card">
+        <img className="mobile-auth-logo" src="./icons/icon-192.png" alt="Pinpop" />
+        <div className="eyebrow">欢迎来到 PINPOP</div>
+        <h2>{signup ? '创建你的世界' : '再次见到你真好'}</h2>
+        <p className="muted">{signup ? '注册后添加朋友，一起点亮地图。' : '登录后继续看看朋友们在哪里。'}</p>
+        {signup && (
+          <div className="name-fields">
+            <label>昵称<input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="你的昵称" /></label>
+            <label>用户名<input value={username} onChange={e => setUsername(e.target.value)} placeholder="your_id" /></label>
+          </div>
+        )}
+        <label>邮箱<input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@example.com" /></label>
+        <label>密码<input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="至少 6 位" /></label>
+        {message && <div className="form-message">{message}</div>}
+        <button className="primary wide" disabled={busy} onClick={submit}>{busy ? '请稍候…' : signup ? '注册' : '登录'}</button>
+        <button className="text-button" type="button" onClick={() => setSignup(!signup)}>{signup ? '已经有账号？登录' : '第一次来？创建账号'}</button>
+      </section>
+    </main>
+  );
 }
 
 function App() {
-  const [preview, setPreview] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [addResults, setAddResults] = useState<Profile[]>([]);
   const [location, setLocation] = useState<LiveLocation | null>(null);
+  const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>('friends');
   const [selected, setSelected] = useState<Friend | null>(null);
   const [ghostMode, setGhostMode] = useState<GhostMode>('precise');
   const [toast, setToast] = useState('');
   const [search, setSearch] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [mapTileError, setMapTileError] = useState<string | null>(null);
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null);
-  const locatedOnce = useRef(false);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const didAutoFocus = useRef(false);
 
-  const me = preview ? demoMe : profile ?? demoMe;
-  const myLocation = preview ? demoLocation : location;
+  const notify = useCallback((text: string) => {
+    setToast(text);
+    window.setTimeout(() => setToast(''), 3200);
+  }, []);
+
+  const reloadFriends = useCallback(async (userId: string) => {
+    const bundle = await loadFriendsBundle(userId);
+    setFriends(bundle.friends);
+    setSentIds(bundle.sentIds);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSignedIn(Boolean(data.session)); setSessionReady(true); });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => { setSignedIn(Boolean(next)); setSessionReady(true); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSignedIn(Boolean(next));
+      setSessionReady(true);
+      if (!next) {
+        setProfile(null);
+        setProfileLoaded(false);
+        setFriends([]);
+        setLocation(null);
+        setLocationLabel(null);
+        didAutoFocus.current = false;
+      }
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (preview) {
-      setLocation(demoLocation);
-      return;
-    }
     if (!signedIn) {
-      setLocation(null);
-      locatedOnce.current = false;
-    }
-  }, [preview, signedIn]);
-
-  useEffect(() => {
-    if (!signedIn || preview) {
       setProfile(null);
-      setProfileLoaded(!signedIn || preview);
+      setProfileLoaded(false);
       return;
     }
     setProfileLoaded(false);
@@ -136,63 +161,92 @@ function App() {
       const { data: nextProfile } = await supabase.from('profiles').select('*').eq('id', user.user.id).maybeSingle();
       setProfile(nextProfile as Profile | null);
       if (nextProfile) {
-        getMyLastLocation(user.user.id).then((row) => {
-          if (row) setLocation(row as LiveLocation);
-        }).catch(() => undefined);
+        const saved = await getMyLastLocation(user.user.id).catch(() => null);
+        if (saved) {
+          setLocation(saved as LiveLocation);
+          setLocationLabel('上次保存的位置');
+        }
+        await reloadFriends(user.user.id);
       }
-      const { data: rels } = await supabase.from('friendships').select('*').eq('status', 'accepted').or(`requester_id.eq.${user.user.id},addressee_id.eq.${user.user.id}`);
-      const ids = (rels || []).map(r => r.requester_id === user.user!.id ? r.addressee_id : r.requester_id);
-      if (ids.length) {
-        const [{ data: profiles }, { data: locations }] = await Promise.all([
-          supabase.from('profiles').select('*').in('id', ids), supabase.from('locations').select('*').in('user_id', ids),
-        ]);
-        setFriends((profiles || []).map(p => ({ ...p, location: (locations || []).find(l => l.user_id === p.id) })) as Friend[]);
-      } else setFriends([]);
       setProfileLoaded(true);
     })();
-  }, [signedIn, preview]);
+  }, [signedIn, reloadFriends]);
 
   useEffect(() => {
-    if ((!signedIn && !preview) || !navigator.geolocation || preview || !profile) return;
-    const watch = navigator.geolocation.watchPosition(async (p) => {
-      const next: LiveLocation = {
-        user_id: profile.id,
-        lat: p.coords.latitude,
-        lng: p.coords.longitude,
-        accuracy: p.coords.accuracy,
-        speed: p.coords.speed,
-        updated_at: new Date().toISOString(),
-      };
-      setLocation(next);
-      if (ghostMode !== 'frozen') await upsertMyLocation(next).catch(() => undefined);
-    }, () => notify('无法获取位置，请允许浏览器定位权限'), { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 });
+    if (!signedIn || !profile || !navigator.geolocation) return;
+    const watch = navigator.geolocation.watchPosition(
+      async (p) => {
+        const next: LiveLocation = {
+          user_id: profile.id,
+          lat: p.coords.latitude,
+          lng: p.coords.longitude,
+          accuracy: p.coords.accuracy,
+          speed: p.coords.speed,
+          updated_at: new Date().toISOString(),
+        };
+        setLocation(next);
+        setLocationLabel(null);
+        if (isUserUuid(profile.id) && ghostMode !== 'frozen') {
+          await upsertMyLocation(next).catch(() => undefined);
+        }
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 },
+    );
     return () => navigator.geolocation.clearWatch(watch);
-  }, [signedIn, preview, profile, ghostMode]);
+  }, [signedIn, profile, ghostMode]);
+
+  const focusMapOn = useCallback((lat: number, lng: number, zoom = 16) => {
+    if (!map.current) return;
+    const z = map.current.getZoom() < 14 ? zoom : map.current.getZoom();
+    const pt = map.current.project(L.latLng(lat, lng), z);
+    pt.y += SHEET_OFFSET_PX;
+    map.current.flyTo(map.current.unproject(pt, z), z, { animate: true, duration: 0.8 });
+  }, []);
 
   useEffect(() => {
-    if ((!signedIn && !preview) || !mapEl.current || map.current) return;
-    const start: [number, number] = myLocation ? [myLocation.lat, myLocation.lng] : [37.33, -121.89];
-    map.current = L.map(mapEl.current, { zoomControl: false, attributionControl: false }).setView(start, 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map.current);
+    if (!profile || !mapEl.current || map.current) return;
+    const start: [number, number] = location ? [location.lat, location.lng] : WORLD_CENTER;
+    const zoom = location ? 14 : WORLD_ZOOM;
+    map.current = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(start, zoom);
+    const tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors',
+    });
+    tileLayer.on('tileerror', () => {
+      setMapTileError('地图瓦片加载失败，请检查网络后刷新页面。');
+    });
+    tileLayer.addTo(map.current);
+    tileLayerRef.current = tileLayer;
     layers.current = L.layerGroup().addTo(map.current);
-    setTimeout(() => {
-      map.current?.invalidateSize();
-      if (myLocation && map.current) {
-        locatedOnce.current = true;
-        const z = map.current.getZoom();
-        const pt = map.current.project(L.latLng(myLocation.lat, myLocation.lng), z);
-        pt.y += SHEET_OFFSET_PX;
-        map.current.flyTo(map.current.unproject(pt, z), z, { duration: 0.65 });
-      }
-    }, 100);
-    return () => { map.current?.remove(); map.current = null; layers.current = null; locatedOnce.current = false; };
-  }, [signedIn, preview]);
+
+    const resize = () => map.current?.invalidateSize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(mapEl.current);
+    window.addEventListener('resize', resize);
+    setTimeout(resize, 100);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', resize);
+      tileLayerRef.current = null;
+      map.current?.remove();
+      map.current = null;
+      layers.current = null;
+    };
+  }, [profile, focusMapOn]);
 
   useEffect(() => {
-    if (!layers.current) return;
+    if (!location || !map.current || didAutoFocus.current) return;
+    didAutoFocus.current = true;
+    focusMapOn(location.lat, location.lng);
+  }, [location, focusMapOn]);
+
+  useEffect(() => {
+    if (!layers.current || !profile) return;
     layers.current.clearLayers();
     const people: { p: Profile | Friend; l?: LiveLocation | null; mine?: boolean }[] = [
-      { p: me, l: myLocation, mine: true },
+      { p: profile, l: location, mine: true },
       ...friends.map(p => ({ p, l: p.location })),
     ];
     people.forEach(({ p, l, mine }) => {
@@ -201,40 +255,71 @@ function App() {
       const face = p.avatar_url
         ? `<img src="${safeHtml(p.avatar_url)}" alt="" referrerpolicy="no-referrer">`
         : `<span>${safeHtml(initials(p.display_name))}</span>`;
-      const icon = L.divIcon({ className: 'person-pin-shell', html: `<div class="person-pin ${mine ? 'mine' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b></div>`, iconSize: [70, 82], iconAnchor: [35, 76] });
+      const icon = L.divIcon({
+        className: 'person-pin-shell',
+        html: `<div class="person-pin ${mine ? 'mine' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b></div>`,
+        iconSize: [70, 82],
+        iconAnchor: [35, 76],
+      });
       const marker = L.marker([l.lat, l.lng], { icon, zIndexOffset: mine ? 1000 : 0 }).addTo(layers.current!);
       if (!mine) marker.on('click', () => { const f = friends.find(x => x.id === p.id); if (f) setSelected(f); });
     });
-  }, [friends, myLocation, me]);
+  }, [friends, location, profile]);
 
-  useEffect(() => {
-    if (!myLocation || !map.current) return;
-    if (!locatedOnce.current) {
-      locatedOnce.current = true;
-      focusMapOn(myLocation.lat, myLocation.lng);
+  async function locateMe() {
+    if (locating || !profile) return;
+    setLocating(true);
+    try {
+      if (!navigator.geolocation) {
+        notify('当前浏览器不支持定位');
+        return;
+      }
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+      const next: LiveLocation = {
+        user_id: profile.id,
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        speed: pos.coords.speed,
+        updated_at: new Date().toISOString(),
+      };
+      setLocation(next);
+      setLocationLabel(null);
+      if (isUserUuid(profile.id) && ghostMode !== 'frozen') {
+        await upsertMyLocation(next).catch(() => undefined);
+      }
+      map.current?.flyTo([next.lat, next.lng], 16, { animate: true, duration: 0.8 });
+    } catch (error) {
+      const saved = isUserUuid(profile.id) ? await getMyLastLocation(profile.id).catch(() => null) : null;
+      if (saved) {
+        setLocation(saved as LiveLocation);
+        setLocationLabel('上次保存的位置');
+        map.current?.flyTo([saved.lat, saved.lng], 16, { animate: true, duration: 0.8 });
+        notify('无法获取当前位置，已回到上次保存的位置');
+        return;
+      }
+      if (error instanceof GeolocationPositionError && error.code === error.PERMISSION_DENIED) {
+        notify('请在浏览器设置中允许 Pinpop 使用位置信息');
+      } else {
+        notify('暂时无法获取位置，请开启定位权限后重试');
+      }
+    } finally {
+      setLocating(false);
     }
-  }, [myLocation]);
-
-  const filtered = useMemo(() => friends.filter(f => `${f.display_name} ${f.username}`.toLowerCase().includes(search.toLowerCase())), [friends, search]);
-  function notify(text: string) { setToast(text); window.setTimeout(() => setToast(''), 2600); }
-  function focusMapOn(lat: number, lng: number) {
-    if (!map.current) return;
-    const z = map.current.getZoom() < 14 ? 16 : map.current.getZoom();
-    const pt = map.current.project(L.latLng(lat, lng), z);
-    pt.y += SHEET_OFFSET_PX;
-    map.current.flyTo(map.current.unproject(pt, z), z, { duration: 0.65 });
   }
-  function focus(lat?: number, lng?: number) { if (lat != null && lng != null) focusMapOn(lat, lng); }
+
   async function changeAvatar(file?: File) {
-    if (!file) return;
+    if (!file || !profile) return;
     setAvatarBusy(true);
     try {
-      if (preview) {
-        setProfile(current => current ? { ...current, avatar_url: URL.createObjectURL(file) } : current);
-      } else if (profile) {
-        const avatarUrl = await uploadProfileAvatar(profile.id, file);
-        setProfile(current => current ? { ...current, avatar_url: avatarUrl } : current);
-      }
+      const avatarUrl = await uploadProfileAvatar(profile.id, file);
+      setProfile(current => current ? { ...current, avatar_url: avatarUrl } : current);
       notify('新头像已经换好啦 ✨');
     } catch (error) {
       notify(error instanceof Error ? error.message : '头像上传失败，请稍后再试');
@@ -243,103 +328,204 @@ function App() {
     }
   }
 
-  if (!sessionReady) return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
-  if (!signedIn && !preview) return <Auth onDemo={() => { setFriends(demoFriends); setPreview(true); }} />;
-  if (signedIn && profileLoaded && !profile && !preview) {
-    return <CompleteProfileScreen onComplete={async (username, displayName) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return { error: '登录状态已失效，请重新登录' };
-      const result = await completeProfile(user.user.id, username, displayName);
-      if (result.error) return { error: result.error };
-      if (result.profile) setProfile(result.profile);
-      return {};
-    }} />;
+  const filtered = useMemo(
+    () => friends.filter(f => `${f.display_name} ${f.username}`.toLowerCase().includes(search.toLowerCase())),
+    [friends, search],
+  );
+
+  const friendIds = useMemo(() => new Set(friends.map(f => f.id)), [friends]);
+
+  if (!sessionReady) {
+    return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
   }
-  if (signedIn && !profileLoaded) return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
+  if (!signedIn) return <AuthScreen />;
+  if (!profileLoaded) {
+    return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
+  }
+  if (!profile) {
+    return (
+      <CompleteProfileScreen onComplete={async (username, displayName) => {
+        const { data: user } = await supabase.auth.getUser();
+        if (!user.user) return { error: '登录状态已失效，请重新登录' };
+        const result = await completeProfile(user.user.id, username, displayName);
+        if (result.error) return { error: result.error };
+        if (result.profile) setProfile(result.profile);
+        return {};
+      }} />
+    );
+  }
 
-  return <main className="app-shell">
-    <div ref={mapEl} className="map" />
-    <header className="topbar">
-      <button className="profile-chip" onClick={() => setPanel('world')}><Avatar profile={me} /><div><b>{me.display_name}</b><small>{me.status_emoji} {me.status_text}</small></div><ChevronDown size={16} /></button>
-      <div className="top-actions">
-        {preview && <button className="demo-badge" onClick={() => { setPreview(false); setFriends([]); }}>预览模式 · 返回登录</button>}
-        <button className="circle-button" onClick={() => notify('现在没有新通知')}><Bell size={20} /></button>
-        <button className={`circle-button ${ghostMode !== 'precise' ? 'active' : ''}`} onClick={() => setPanel('settings')}><Ghost size={21} /></button>
-      </div>
-    </header>
-
-    <div className="map-tools">
-      <button onClick={() => myLocation && focusMapOn(myLocation.lat, myLocation.lng)}><LocateFixed size={21} /></button>
-      <button onClick={() => setPanel('places')}><MapPin size={21} /></button>
-    </div>
-
-    {preview && <div className="map-mood"><span>☀️ 24°</span><b>Santa Monica</b><small>{friends.length} 位朋友在附近</small></div>}
-
-    <nav className="dock">
-      <button className={panel === 'friends' ? 'active' : ''} onClick={() => setPanel('friends')}><Users /><span>朋友</span></button>
-      <button className={panel === 'places' ? 'active' : ''} onClick={() => setPanel('places')}><Search /><span>探索</span></button>
-      <button className="center-action" onClick={() => notify(preview ? '已向所有在线好友发送 👋' : '挥手功能即将开放')}><span>👋</span></button>
-      <button className={panel === 'world' ? 'active' : ''} onClick={() => setPanel('world')}><Footprints /><span>足迹</span></button>
-      <button className={panel === 'messages' ? 'active' : ''} onClick={() => setPanel('messages')}><MessageCircle /><span>消息</span></button>
-    </nav>
-
-    {panel && <aside className="sheet">
-      <div className="grabber" />
-      <div className="sheet-head">
-        <div><div className="eyebrow">{panel === 'friends' ? '你的圈子' : panel === 'places' ? '身边正在发生' : panel === 'world' ? '你的世界' : panel === 'messages' ? '保持联系' : '位置隐私'}</div><h2>{panel === 'friends' ? `${friends.length} 位朋友` : panel === 'places' ? '探索地点' : panel === 'world' ? '我的资料' : panel === 'messages' ? '消息' : 'Ghost Mode'}</h2></div>
-        <button className="close-button" onClick={() => setPanel(null)}><X size={19} /></button>
-      </div>
-
-      {panel === 'friends' && <>
-        <div className="search"><Search size={18} /><input placeholder="搜索朋友" value={search} onChange={e => setSearch(e.target.value)} /></div>
-        <div className="friend-list">
-          {filtered.length === 0 && <p className="muted empty-hint">还没有朋友。添加好友后他们会出现在这里。</p>}
-          {filtered.map(f => <button className="friend-row" key={f.id} onClick={() => { setSelected(f); focus(f.location?.lat, f.location?.lng); }}>
-          <Avatar profile={f} showStatus />
-          <div><b>{f.display_name}</b><small>@{f.username} · {f.status_text}</small></div>
-          <div className="friend-meta"><span>{ago(f.location?.updated_at)}</span><small>{f.is_charging && <BatteryCharging size={13} />} {f.battery_level != null ? `${f.battery_level}%` : ''}</small></div>
-        </button>)}
+  return (
+    <main className="app-shell">
+      <div ref={mapEl} className="map" />
+      {mapTileError && <div className="map-error-banner">{mapTileError}</div>}
+      {!location && (
+        <div className="map-hint">
+          <p>开启浏览器定位后，你的位置会显示在地图上。</p>
+          <button type="button" className="primary compact" onClick={locateMe} disabled={locating}>
+            {locating ? '定位中…' : '开启定位'}
+          </button>
         </div>
-      </>}
+      )}
+      {locationLabel && <div className="location-label">{locationLabel}</div>}
 
-      {panel === 'places' && <div className="feature-grid">
-        <button onClick={() => notify('地点搜索即将开放')}><span className="feature-icon coral"><MapPin /></span><b>附近地点</b><small>餐厅、咖啡店与朋友常去的地方</small></button>
-        <button onClick={() => notify('打卡功能即将开放')}><span className="feature-icon violet"><Navigation /></span><b>在这里打卡</b><small>把此刻加入你的私人地图</small></button>
-        {preview && <div className="place-card"><div className="place-visual">☕️</div><div><b>Santa Monica</b><small>你和 2 位朋友最近来过</small></div></div>}
-      </div>}
+      <header className="topbar">
+        <button className="profile-chip" type="button" onClick={() => setPanel('world')}>
+          <Avatar profile={profile} />
+          <div><b>{profile.display_name}</b><small>{profile.status_emoji} {profile.status_text}</small></div>
+          <ChevronDown size={16} />
+        </button>
+        <div className="top-actions">
+          <button className="circle-button" type="button" onClick={() => notify('现在没有新通知')}><Bell size={20} /></button>
+          <button className={`circle-button ${ghostMode !== 'precise' ? 'active' : ''}`} type="button" onClick={() => setPanel('settings')}><Ghost size={21} /></button>
+        </div>
+      </header>
 
-      {panel === 'world' && <div className="world-panel">
-        <div className="profile-spotlight"><div className="avatar-editor"><Avatar profile={me} className="profile-avatar" showStatus /><label className={avatarBusy ? 'uploading' : ''}><Camera size={16}/><span>{avatarBusy ? '上传中…' : '换头像'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e => changeAvatar(e.target.files?.[0])}/></label></div><div><span>@{me.username}</span><strong>{me.display_name}</strong><small>让朋友一眼就在地图上找到你</small></div></div>
-        {preview ? <>
-          <div className="stat-card hero-stat"><span>本周探索</span><strong>23.8<small> km</small></strong><div className="mini-bars"><i/><i/><i/><i/><i/><i/><i/></div></div>
-          <div className="stat-row"><div className="stat-card"><span>到访地点</span><strong>12</strong><small>3 个新地点</small></div><div className="stat-card"><span>相聚时间</span><strong>8.4h</strong><small>和 Maya 最久</small></div></div>
-        </> : <p className="muted empty-hint">足迹统计功能即将开放。</p>}
-        <button className="privacy-note"><Ghost size={19}/><div><b>足迹默认仅你可见</b><small>功能上线后你可以随时删除地点历史</small></div></button>
-      </div>}
+      <div className="map-tools">
+        <button type="button" onClick={locateMe} disabled={locating} aria-label="定位到我">
+          {locating ? <Loader2 size={21} className="spin" /> : <LocateFixed size={21} />}
+        </button>
+        <button type="button" onClick={() => setPanel('places')}><MapPin size={21} /></button>
+      </div>
 
-      {panel === 'messages' && <div className="friend-list">
-        {friends.length === 0 && <p className="muted empty-hint">还没有消息。添加朋友后开始聊天。</p>}
-        {friends.map(f => <button className="friend-row" key={f.id} onClick={() => setSelected(f)}><Avatar profile={f} /><div><b>{f.display_name}</b><small>{preview && f.id === 'maya' ? '晚点海边见！' : `${f.status_emoji} ${f.status_text}`}</small></div>{preview && f.id === 'maya' && <span className="unread">2</span>}</button>)}
-      </div>}
+      <nav className="dock">
+        <button className={panel === 'friends' ? 'active' : ''} type="button" onClick={() => setPanel('friends')}><Users /><span>朋友</span></button>
+        <button className={panel === 'places' ? 'active' : ''} type="button" onClick={() => setPanel('places')}><Search /><span>探索</span></button>
+        <button className="center-action" type="button" disabled onClick={() => notify('挥手功能正在开发中')}><span>👋</span></button>
+        <button className={panel === 'world' ? 'active' : ''} type="button" onClick={() => setPanel('world')}><Footprints /><span>足迹</span></button>
+        <button className={panel === 'messages' ? 'active' : ''} type="button" onClick={() => setPanel('messages')}><MessageCircle /><span>消息</span></button>
+      </nav>
 
-      {panel === 'settings' && <div className="ghost-panel">
-        <p>选择朋友在地图上看到你的位置精度。你可以随时切换。</p>
-        {modes.map(m => <button key={m.value} className={ghostMode === m.value ? 'selected' : ''} onClick={() => { setGhostMode(m.value); notify(`已切换为${m.title}`); }}><span>{m.icon}</span><div><b>{m.title}</b><small>{m.detail}</small></div><i /></button>)}
-        <div className="setting-row"><div><b>针对单个好友设置</b><small>为不同朋友选择不同模式</small></div><span>即将开放</span></div>
-      </div>}
-    </aside>}
+      {panel === 'add' && profile && (
+        <AddFriendPanel
+          me={profile}
+          results={addResults}
+          sentIds={sentIds}
+          friendIds={friendIds}
+          onClose={() => setPanel('friends')}
+          onSearch={(q) => { searchProfiles(profile.id, q).then(setAddResults).catch(() => undefined); }}
+          onSendRequest={async (id) => {
+            await sendFriendRequest(profile.id, id);
+            setSentIds(prev => new Set(prev).add(id));
+            notify('好友请求已发送');
+          }}
+          onNotify={notify}
+        />
+      )}
 
-    {selected && <section className="person-card">
-      <button className="close-button" onClick={() => setSelected(null)}><X size={18}/></button>
-      <Avatar profile={selected} className="big-avatar" showStatus />
-      <h2>{selected.display_name}</h2><p>@{selected.username} · {ago(selected.location?.updated_at)}</p>
-      <div className="presence"><span className="pulse"/><b>{selected.status_text}</b>{selected.battery_level != null && <small>{selected.battery_level}% 电量</small>}</div>
-      <div className="person-actions"><button onClick={() => notify(preview ? `已向 ${selected.display_name} 发送 👋` : '挥手功能即将开放')}><SmilePlus/><span>打招呼</span></button><button onClick={() => notify("What's Up 功能即将开放")}><Sparkles/><span>What's Up</span></button><button onClick={() => setPanel('messages')}><MessageCircle/><span>聊天</span></button></div>
-      <div className="quick-message"><input placeholder={`给 ${selected.display_name} 发消息…`} /><button onClick={() => notify('消息功能即将开放')}><Send size={18}/></button></div>
-    </section>}
+      {panel && panel !== 'add' && (
+        <aside className="sheet">
+          <div className="grabber" />
+          <div className="sheet-head">
+            <div>
+              <div className="eyebrow">
+                {panel === 'friends' ? '你的圈子' : panel === 'places' ? '身边正在发生' : panel === 'world' ? '你的世界' : panel === 'messages' ? '保持联系' : '位置隐私'}
+              </div>
+              <h2>
+                {panel === 'friends' ? `${friends.length} 位朋友` : panel === 'places' ? '探索地点' : panel === 'world' ? '我的资料' : panel === 'messages' ? '消息' : 'Ghost Mode'}
+              </h2>
+            </div>
+            <button className="close-button" type="button" onClick={() => setPanel(null)}><X size={19} /></button>
+          </div>
 
-    {toast && <div className="toast">{toast}</div>}
-  </main>;
+          {panel === 'friends' && (
+            <>
+              <div className="search"><Search size={18} /><input placeholder="搜索朋友" value={search} onChange={e => setSearch(e.target.value)} /></div>
+              <div className="friend-list">
+                {filtered.length === 0 && (
+                  <div className="empty-state">
+                    <p className="muted empty-hint">还没有朋友</p>
+                    <button className="primary compact" type="button" onClick={() => setPanel('add')}>添加朋友</button>
+                  </div>
+                )}
+                {filtered.map(f => (
+                  <button className="friend-row" key={f.id} type="button" onClick={() => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}>
+                    <Avatar profile={f} showStatus />
+                    <div><b>{f.display_name}</b><small>@{f.username} · {f.status_text}</small></div>
+                    <div className="friend-meta">
+                      <span>{ago(f.location?.updated_at)}</span>
+                      <small>{f.is_charging && <BatteryCharging size={13} />} {f.battery_level != null ? `${f.battery_level}%` : ''}</small>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {panel === 'places' && (
+            <div className="feature-grid">
+              <button type="button" disabled><span className="feature-icon coral"><MapPin /></span><b>附近地点</b><small>功能正在开发中</small></button>
+              <button type="button" disabled><span className="feature-icon violet"><Navigation /></span><b>在这里打卡</b><small>功能正在开发中</small></button>
+            </div>
+          )}
+
+          {panel === 'world' && (
+            <div className="world-panel">
+              <div className="profile-spotlight">
+                <div className="avatar-editor">
+                  <Avatar profile={profile} className="profile-avatar" showStatus />
+                  <label className={avatarBusy ? 'uploading' : ''}>
+                    <Camera size={16} />
+                    <span>{avatarBusy ? '上传中…' : '换头像'}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e => changeAvatar(e.target.files?.[0])} />
+                  </label>
+                </div>
+                <div><span>@{profile.username}</span><strong>{profile.display_name}</strong><small>让朋友一眼就在地图上找到你</small></div>
+              </div>
+              <p className="muted empty-hint">还没有足迹数据</p>
+              <button className="privacy-note" type="button" disabled>
+                <Ghost size={19} />
+                <div><b>足迹默认仅你可见</b><small>功能上线后你可以随时删除地点历史</small></div>
+              </button>
+            </div>
+          )}
+
+          {panel === 'messages' && (
+            <p className="muted empty-hint">消息功能正在开发中</p>
+          )}
+
+          {panel === 'settings' && (
+            <div className="ghost-panel">
+              <p>选择朋友在地图上看到你的位置精度。服务端隐私控制仍在开发中。</p>
+              {modes.map(m => (
+                <button key={m.value} type="button" className={ghostMode === m.value ? 'selected' : ''} onClick={() => { setGhostMode(m.value); notify(`已切换为${m.title}（仅本地 UI）`); }}>
+                  <span>{m.icon}</span>
+                  <div><b>{m.title}</b><small>{m.detail}</small></div>
+                  <i />
+                </button>
+              ))}
+              <div className="setting-row"><div><b>针对单个好友设置</b><small>功能正在开发中</small></div><span>即将开放</span></div>
+            </div>
+          )}
+        </aside>
+      )}
+
+      {selected && (
+        <section className="person-card">
+          <button className="close-button" type="button" onClick={() => setSelected(null)}><X size={18} /></button>
+          <Avatar profile={selected} className="big-avatar" showStatus />
+          <h2>{selected.display_name}</h2>
+          <p>@{selected.username} · {ago(selected.location?.updated_at)}</p>
+          <div className="presence">
+            <span className="pulse" />
+            <b>{selected.status_text}</b>
+            {selected.battery_level != null && <small>{selected.battery_level}% 电量</small>}
+          </div>
+          <div className="person-actions">
+            <button type="button" disabled><SmilePlus /><span>打招呼</span></button>
+            <button type="button" disabled><Sparkles /><span>What&apos;s Up</span></button>
+            <button type="button" disabled><MessageCircle /><span>聊天</span></button>
+          </div>
+          <div className="quick-message">
+            <input placeholder={`给 ${selected.display_name} 发消息…`} disabled />
+            <button type="button" disabled><Send size={18} /></button>
+          </div>
+        </section>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </main>
+  );
 }
 
 export default App;
