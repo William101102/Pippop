@@ -1,4 +1,4 @@
--- 近旁 (Zenly-style friend map) — Supabase schema
+-- Pinpop (Zenly-style friend map) — Supabase schema
 -- Paste this whole file into your Supabase project's SQL Editor and click Run.
 
 -- 用户资料(好友能看到的公开信息)
