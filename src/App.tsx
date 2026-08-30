@@ -30,7 +30,7 @@ import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
 import {
   loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend,
 } from './services/social';
-import { loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
+import { fetchFriendLocation, loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
 import {
@@ -237,11 +237,15 @@ function App() {
     setSentIds(bundle.sentIds);
   }, []);
 
-  const handleFriendLocation = useCallback((userId: string, row: Record<string, unknown> | null) => {
-    if (!row) return;
-    setFriends(prev => prev.map(f => (
-      f.id === userId ? { ...f, location: row as unknown as LiveLocation } : f
-    )));
+  const handleFriendLocation = useCallback((userId: string, _row: Record<string, unknown> | null) => {
+    // Always re-read through friend_locations so blurred/frozen coords stay
+    // masked even if realtime delivered a raw locations row.
+    fetchFriendLocation(userId).then((loc) => {
+      if (!loc) return;
+      setFriends(prev => prev.map(f => (
+        f.id === userId ? { ...f, location: loc, ghost_mode: loc.privacy_mode ?? f.ghost_mode } : f
+      )));
+    }).catch(() => undefined);
   }, []);
 
   const handleIncomingMessage = useCallback((msg: Message) => {
@@ -267,6 +271,15 @@ function App() {
     onReaction: handleReaction,
     onPlaceEvent: handlePlaceEvent,
   });
+
+  // Blurred friends never appear on the locations realtime channel (RLS hides
+  // the raw row), so pull the masked view on a short interval.
+  useEffect(() => {
+    if (preview || !profile) return;
+    const tick = () => { reloadFriends(profile.id).catch(() => undefined); };
+    const id = window.setInterval(tick, 20_000);
+    return () => window.clearInterval(id);
+  }, [preview, profile, reloadFriends]);
 
   useEffect(() => {
     const invite = readInviteQuery();
@@ -569,7 +582,8 @@ function App() {
         : `<span>${safeHtml(initials(p.display_name))}</span>`;
       // Green ring = this person is sharing a live fix. Gray ring = they froze
       // sharing, or their last ping is old enough that it is only a last-seen.
-      const hidden = (mine ? ghostMode : p.ghost_mode) === 'frozen';
+      const theirMode = 'ghost_mode' in p ? p.ghost_mode : undefined;
+      const hidden = (mine ? ghostMode : theirMode) === 'frozen';
       const stale = Date.now() - new Date(l.updated_at).getTime() > STALE_AFTER_MS;
       const live = !hidden && !stale;
       const reaction = mine ? freshReaction : undefined;
@@ -1152,7 +1166,11 @@ function App() {
                   <label className={avatarBusy ? 'uploading' : ''}>
                     <Camera size={16} />
                     <span>{avatarBusy ? '上传中…' : '换头像'}</span>
-                    <input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e => changeAvatar(e.target.files?.[0])} />
+                    <input type="file" accept="image/*" disabled={avatarBusy} onChange={e => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      void changeAvatar(file);
+                    }} />
                   </label>
                 </div>
                 <div><span>@{profile.username}</span><strong>{profile.display_name}</strong><small>让朋友一眼就在地图上找到你</small></div>

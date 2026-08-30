@@ -20,6 +20,8 @@ export interface LiveLocation {
   accuracy?: number | null;
   speed?: number | null;
   updated_at: string;
+  /** Present when the row came from friend_locations. */
+  privacy_mode?: GhostMode;
 }
 
 export interface Friend extends Profile {

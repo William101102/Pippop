@@ -21,7 +21,12 @@ async function fetchLocationsForUsers(userIds: string[]): Promise<LiveLocation[]
 
   const byUser = new Map<string, LiveLocation>();
   for (const row of (table.data || []) as LiveLocation[]) byUser.set(row.user_id, row);
-  for (const row of (view.data || []) as LiveLocation[]) byUser.set(row.user_id, row);
+  for (const row of (view.data || []) as LiveLocation[]) {
+    byUser.set(row.user_id, {
+      ...row,
+      privacy_mode: row.privacy_mode,
+    });
+  }
   return [...byUser.values()];
 }
 
@@ -61,12 +66,16 @@ export async function loadFriendsBundle(meId: string) {
       const other = rel.requester_id === meId ? rel.addressee_id : rel.requester_id;
       streakByFriend.set(other, rel.streak_days ?? 0);
     }
-    friends = ((profiles || []) as Profile[]).map((p) => ({
-      ...p,
-      location: locations.find((l) => l.user_id === p.id) || null,
-      streak_days: streakByFriend.get(p.id) ?? 0,
-      is_best_friend: bestFriendIds.has(p.id),
-    }));
+    friends = ((profiles || []) as Profile[]).map((p) => {
+      const location = locations.find((l) => l.user_id === p.id) || null;
+      return {
+        ...p,
+        location,
+        ghost_mode: location?.privacy_mode,
+        streak_days: streakByFriend.get(p.id) ?? 0,
+        is_best_friend: bestFriendIds.has(p.id),
+      };
+    });
     // Best friends first, then the people you actually talk to.
     friends.sort((a, b) => {
       if (a.is_best_friend !== b.is_best_friend) return a.is_best_friend ? -1 : 1;

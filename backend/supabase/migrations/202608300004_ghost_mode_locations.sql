@@ -32,7 +32,10 @@ returns double precision
 language sql
 immutable
 as $$
-  select base + (((get_byte(decode(md5(seed::text || axis::text), 'hex'), 0) % 200) - 100) * 0.009);
+  select base + (
+    ((get_byte(decode(md5(seed::text || axis::text), 'hex'), 0) % 2) * 2 - 1)
+    * (0.002 + (get_byte(decode(md5(seed::text || axis::text || 'm'), 'hex'), 1) % 101) * 0.0001)
+  );
 $$;
 
 create or replace view public.friend_locations

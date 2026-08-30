@@ -293,9 +293,14 @@ returns text language sql stable security definer set search_path = public as $$
   );
 $$;
 
+-- Stable offset of about 0.2–1.2 km per axis, so "blurred" still reads as
+-- the same neighbourhood instead of jumping a city away.
 create or replace function public.blur_coord(base double precision, seed uuid, axis int)
 returns double precision language sql immutable as $$
-  select base + (((get_byte(decode(md5(seed::text || axis::text), 'hex'), 0) % 200) - 100) * 0.009);
+  select base + (
+    ((get_byte(decode(md5(seed::text || axis::text), 'hex'), 0) % 2) * 2 - 1)
+    * (0.002 + (get_byte(decode(md5(seed::text || axis::text || 'm'), 'hex'), 1) % 101) * 0.0001)
+  );
 $$;
 
 -- Accepted friendship in either direction, and neither side has blocked the
@@ -550,7 +555,11 @@ select
   end as lng,
   l.accuracy,
   l.speed,
-  l.updated_at
+  l.updated_at,
+  case
+    when auth.uid() = l.user_id then 'precise'
+    else public.privacy_mode_for(l.user_id, auth.uid())
+  end as privacy_mode
 from public.locations l
 where auth.uid() = l.user_id
    or public.shares_location_with(l.user_id, auth.uid());
@@ -579,6 +588,11 @@ create policy "users update their own avatar" on storage.objects for update to a
 drop policy if exists "users delete their own avatar" on storage.objects;
 create policy "users delete their own avatar" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Public bucket still needs a select policy or uploaded photos 403 in the app.
+drop policy if exists "avatars are publicly readable" on storage.objects;
+create policy "avatars are publicly readable" on storage.objects for select
+  using (bucket_id = 'avatars');
 
 -- ----------------------------------------------------------------------------
 -- Footprints. Reads only the caller's own history; the grid columns the client
@@ -946,6 +960,11 @@ union all select 'streak trigger',
          where tgname = 'messages_touch_streak' and not tgisinternal) then 'ok' else 'MISSING' end
 union all select 'avatars storage bucket',
        case when exists (select 1 from storage.buckets where id = 'avatars') then 'ok' else 'MISSING' end
+union all select 'avatars public read policy',
+       case when exists (select 1 from pg_policies
+         where schemaname = 'storage' and tablename = 'objects'
+           and policyname = 'avatars are publicly readable')
+       then 'ok' else 'MISSING' end
 union all select 'places insert policy',
        case when exists (select 1 from pg_policies
          where schemaname = 'public' and tablename = 'places' and policyname = 'create user place')

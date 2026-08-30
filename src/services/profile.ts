@@ -71,8 +71,14 @@ function describeUploadError(error: { message?: string; statusCode?: string }) {
   return message || '头像上传失败，请稍后再试';
 }
 
+function looksLikeImage(file: File) {
+  if (file.type.startsWith('image/')) return true;
+  // iOS camera roll often sends HEIC with an empty type.
+  return !file.type || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name);
+}
+
 export async function uploadProfileAvatar(userId: string, file: File): Promise<string> {
-  if (!file.type.startsWith('image/')) throw new Error('请选择一张图片');
+  if (!looksLikeImage(file)) throw new Error('请选择一张图片');
   if (file.size > MAX_AVATAR_BYTES) throw new Error('图片不能超过 12 MB');
 
   const { body, contentType, extension } = await normalizeAvatar(file);

@@ -47,7 +47,8 @@ The preview is enough to see the product. To sign in for real:
 
 1. Copy `.env.example` to `.env.local`.
 2. Put in your Supabase URL and anon key (never a service-role key).
-3. Run `backend/supabase/setup.sql` in the Supabase SQL editor.
+3. Run `backend/supabase/setup.sql` in the Supabase SQL editor (again after
+   pulling, so the public avatar policy and 0.2–1.2 km blur stay current).
 4. Restart `npm run dev` and open [http://127.0.0.1:5173/](http://127.0.0.1:5173/)
    without `?preview=1`.
 
