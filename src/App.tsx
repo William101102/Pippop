@@ -41,6 +41,9 @@ const CATEGORY_ICON: Record<string, string> = {
   cafe: '☕️', food: '🍜', park: '🌳', gym: '🏋️', shop: '🛍️', home: '🏠', work: '💼', other: '📍',
 };
 
+// Past this, a friend's pin is their last known spot rather than a live one.
+const STALE_AFTER_MS = 30 * 60 * 1000;
+
 function ago(iso?: string) {
   if (!iso) return '暂无位置';
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -371,9 +374,12 @@ function App() {
       const face = p.avatar_url
         ? `<img src="${safeHtml(p.avatar_url)}" alt="" referrerpolicy="no-referrer">`
         : `<span>${safeHtml(initials(p.display_name))}</span>`;
+      // A friend who stopped reporting still shows their last known spot, so
+      // label it with its age instead of passing it off as live.
+      const stale = !mine && Date.now() - new Date(l.updated_at).getTime() > STALE_AFTER_MS;
       const icon = L.divIcon({
         className: 'person-pin-shell',
-        html: `<div class="person-pin ${mine ? 'mine' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b></div>`,
+        html: `<div class="person-pin ${mine ? 'mine' : ''} ${stale ? 'stale' : ''}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b>${stale ? `<i>${safeHtml(ago(l.updated_at))}</i>` : ''}</div>`,
         iconSize: [70, 82],
         iconAnchor: [35, 76],
       });

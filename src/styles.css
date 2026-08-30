@@ -150,6 +150,9 @@ button { color: inherit; }
 .person-pin b { position: absolute; z-index: 3; right: -1px; top: -7px; display: grid; place-items: center; width: 27px; height: 27px; border: 3px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(41,25,72,.2); font-size: 13px; }
 .person-pin.mine::after { content: ''; position: absolute; left: 3px; top: -3px; width: 58px; height: 58px; border: 3px solid var(--pin); border-radius: 50%; animation: pulse-ring 2s ease-out infinite; }
 @keyframes pulse-ring { to { transform: scale(1.55); opacity: 0; } }
+/* Last known position: dimmed, with its age on the pin. */
+.person-pin.stale { filter: drop-shadow(0 6px 7px rgba(44,34,71,.18)) grayscale(.5); opacity: .78; }
+.person-pin.stale i { position: absolute; z-index: 4; left: 50%; bottom: 4px; padding: 2px 7px; border-radius: 9px; background: rgba(38,26,64,.82); color: #fff; box-shadow: 0 2px 6px rgba(38,26,64,.28); font-size: 10px; font-style: normal; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
 
 /* Reusable avatars */
 .avatar-photo { --avatar-color: var(--coral); position: relative; display: grid; flex: 0 0 auto; place-items: center; width: 46px; height: 46px; overflow: visible; border: 3px solid #fff; border-radius: 16px; color: #fff; background: var(--avatar-color); box-shadow: 0 5px 13px rgba(53,37,91,.16); font-weight: 900; }

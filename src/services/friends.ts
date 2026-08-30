@@ -1,19 +1,27 @@
 import { supabase } from '../lib/supabase';
 import type { Friend, FriendRequest, FriendshipRow, LiveLocation, Profile } from '../types';
 
+/**
+ * friend_locations applies Ghost Mode masking, so it is the preferred source.
+ * A misconfigured view returns zero rows rather than an error though, which used
+ * to leave every friend stuck on "暂无位置", so fall back to the table for
+ * anyone the view omitted. That cannot leak masked coordinates: the table's
+ * select policy only exposes friends who are in 'precise' mode anyway.
+ */
 async function fetchLocationsForUsers(userIds: string[]): Promise<LiveLocation[]> {
   if (!userIds.length) return [];
 
-  const { data: viewData, error: viewError } = await supabase
-    .from('friend_locations')
-    .select('*')
-    .in('user_id', userIds);
+  const [view, table] = await Promise.all([
+    supabase.from('friend_locations').select('*').in('user_id', userIds),
+    supabase.from('locations').select('*').in('user_id', userIds),
+  ]);
 
-  if (!viewError && viewData) return viewData as LiveLocation[];
+  if (view.error && table.error) throw view.error;
 
-  const { data, error } = await supabase.from('locations').select('*').in('user_id', userIds);
-  if (error) throw error;
-  return (data || []) as LiveLocation[];
+  const byUser = new Map<string, LiveLocation>();
+  for (const row of (table.data || []) as LiveLocation[]) byUser.set(row.user_id, row);
+  for (const row of (view.data || []) as LiveLocation[]) byUser.set(row.user_id, row);
+  return [...byUser.values()];
 }
 
 export async function loadFriendsBundle(meId: string) {

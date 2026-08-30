@@ -214,6 +214,51 @@ create index if not exists visits_user_time_idx on public.visits (user_id, arriv
 create index if not exists visits_place_idx on public.visits (place_id, arrived_at desc);
 
 -- ----------------------------------------------------------------------------
+-- Privacy helpers. Defined before the policies below because those reference
+-- them, and all are security definer so reading friendships/blocks/privacy from
+-- inside a policy does not recurse into those tables' own RLS.
+-- ----------------------------------------------------------------------------
+create or replace function public.default_privacy_mode(p_owner uuid)
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select lp.mode from public.location_privacy lp
+      where lp.owner_id = p_owner and lp.viewer_id is null),
+    'precise'
+  );
+$$;
+
+create or replace function public.privacy_mode_for(p_owner uuid, p_viewer uuid)
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select lp.mode from public.location_privacy lp
+      where lp.owner_id = p_owner and lp.viewer_id = p_viewer),
+    public.default_privacy_mode(p_owner)
+  );
+$$;
+
+create or replace function public.blur_coord(base double precision, seed uuid, axis int)
+returns double precision language sql immutable as $$
+  select base + (((get_byte(decode(md5(seed::text || axis::text), 'hex'), 0) % 200) - 100) * 0.009);
+$$;
+
+-- Accepted friendship in either direction, and neither side has blocked the
+-- other. Shared by friend_locations and the locations select policy so both
+-- gate visibility identically.
+create or replace function public.shares_location_with(p_owner uuid, p_viewer uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select p_viewer is not null and exists (
+    select 1 from public.friendships f
+    where f.status = 'accepted'
+      and ((f.requester_id = p_viewer and f.addressee_id = p_owner)
+        or (f.addressee_id = p_viewer and f.requester_id = p_owner))
+  ) and not exists (
+    select 1 from public.blocks b
+    where (b.blocker_id = p_owner and b.blocked_id = p_viewer)
+       or (b.blocker_id = p_viewer and b.blocked_id = p_owner)
+  );
+$$;
+
+-- ----------------------------------------------------------------------------
 -- Row level security
 -- ----------------------------------------------------------------------------
 alter table public.profiles enable row level security;
@@ -242,10 +287,20 @@ drop policy if exists "users can update own profile" on public.profiles;
 create policy "users can update own profile" on public.profiles for update
   using (auth.uid() = id) with check (auth.uid() = id);
 
--- Locations: raw rows stay private; friends read the masked view below.
+-- Locations. Realtime evaluates this policy per subscriber and cannot subscribe
+-- to a view, so friends need select on the raw row or their live updates never
+-- arrive. Exposing it only for 'precise' mode leaks nothing the masked
+-- friend_locations view would not already return verbatim, while 'blurred' and
+-- 'frozen' rows stay readable only through that view.
 drop policy if exists "view friends location" on public.locations;
 create policy "view friends location" on public.locations for select
-  using (auth.uid() = user_id);
+  using (
+    auth.uid() = user_id
+    or (
+      public.shares_location_with(user_id, auth.uid())
+      and public.privacy_mode_for(user_id, auth.uid()) = 'precise'
+    )
+  );
 
 drop policy if exists "insert own location" on public.locations;
 create policy "insert own location" on public.locations for insert
@@ -371,30 +426,10 @@ create policy "answer whats up" on public.whats_up_requests for update
 -- ----------------------------------------------------------------------------
 -- Ghost Mode: friends read masked coordinates from this view, never raw rows.
 -- ----------------------------------------------------------------------------
-create or replace function public.default_privacy_mode(p_owner uuid)
-returns text language sql stable security definer set search_path = public as $$
-  select coalesce(
-    (select lp.mode from public.location_privacy lp
-      where lp.owner_id = p_owner and lp.viewer_id is null),
-    'precise'
-  );
-$$;
-
-create or replace function public.privacy_mode_for(p_owner uuid, p_viewer uuid)
-returns text language sql stable security definer set search_path = public as $$
-  select coalesce(
-    (select lp.mode from public.location_privacy lp
-      where lp.owner_id = p_owner and lp.viewer_id = p_viewer),
-    public.default_privacy_mode(p_owner)
-  );
-$$;
-
-create or replace function public.blur_coord(base double precision, seed uuid, axis int)
-returns double precision language sql immutable as $$
-  select base + (((get_byte(decode(md5(seed::text || axis::text), 'hex'), 0) % 200) - 100) * 0.009);
-$$;
-
-create or replace view public.friend_locations with (security_invoker = true) as
+-- security_invoker must stay off: this view is the only sanctioned way to read
+-- someone else's coordinates, so it has to out-live the owner-only select
+-- policy on public.locations. Its own where clause is the access gate.
+create or replace view public.friend_locations with (security_invoker = false) as
 select
   l.user_id,
   case
@@ -420,12 +455,7 @@ select
   l.updated_at
 from public.locations l
 where auth.uid() = l.user_id
-   or exists (
-     select 1 from public.friendships f
-     where f.status = 'accepted'
-       and ((f.requester_id = auth.uid() and f.addressee_id = l.user_id)
-         or (f.addressee_id = auth.uid() and f.requester_id = l.user_id))
-   );
+   or public.shares_location_with(l.user_id, auth.uid());
 
 grant select on public.friend_locations to authenticated;
 
