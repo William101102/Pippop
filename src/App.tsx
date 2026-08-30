@@ -14,6 +14,7 @@ import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
 import { completeProfile, searchProfiles } from './services/profiles';
 import type { Friend, GhostMode, LiveLocation, Panel, Profile } from './types';
+import { useSignificantPlaces } from './hooks/useSignificantPlaces';
 
 const WORLD_CENTER: [number, number] = [20, 0];
 const WORLD_ZOOM = 2;
@@ -116,6 +117,13 @@ function App() {
   const layers = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const didAutoFocus = useRef(false);
+  const { places, recordFix } = useSignificantPlaces(profile?.id, signedIn && Boolean(profile));
+
+  // Feed own fixes into private significant-place history (overnight/home/work).
+  useEffect(() => {
+    if (!location || !profile) return;
+    recordFix(location.lat, location.lng, location.updated_at).catch(() => undefined);
+  }, [location, profile, recordFix]);
 
   const notify = useCallback((text: string) => {
     setToast(text);
@@ -264,7 +272,23 @@ function App() {
       const marker = L.marker([l.lat, l.lng], { icon, zIndexOffset: mine ? 1000 : 0 }).addTo(layers.current!);
       if (!mine) marker.on('click', () => { const f = friends.find(x => x.id === p.id); if (f) setSelected(f); });
     });
-  }, [friends, location, profile]);
+    // Private significant places (overnight spots / home / work).
+    const PLACE_STYLE: Record<string, { icon: string; color: string }> = {
+      overnight: { icon: '🌙', color: '#25c9b7' },
+      home: { icon: '🏠', color: '#ff6f61' },
+      work: { icon: '💼', color: '#8b7cf6' },
+    };
+    places.forEach(p => {
+      const style = PLACE_STYLE[p.kind] || PLACE_STYLE.overnight;
+      const icon = L.divIcon({
+        className: 'place-pin-shell',
+        html: `<div class="place-pin" style="--place:${style.color}"><span>${style.icon}</span><b>${safeHtml(p.label)}</b></div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+      L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -500 }).addTo(layers.current!);
+    });
+  }, [friends, location, profile, places]);
 
   async function locateMe() {
     if (locating || !profile) return;
@@ -472,10 +496,34 @@ function App() {
                 </div>
                 <div><span>@{profile.username}</span><strong>{profile.display_name}</strong><small>让朋友一眼就在地图上找到你</small></div>
               </div>
-              <p className="muted empty-hint">还没有足迹数据</p>
+              {places.length === 0 ? (
+                <p className="muted empty-hint">还没有足迹数据，开着 App 时会自动记录你的常去地点。</p>
+              ) : (
+                <div className="friend-list">
+                  {places.map((p, i) => (
+                    <button
+                      className="friend-row"
+                      type="button"
+                      key={`${p.kind}-${p.lat}-${p.lng}-${i}`}
+                      onClick={() => focusMapOn(p.lat, p.lng)}
+                    >
+                      <span
+                        className="avatar"
+                        style={{ background: p.kind === 'home' ? '#ff6f61' : p.kind === 'work' ? '#8b7cf6' : '#25c9b7' }}
+                      >
+                        {p.kind === 'home' ? '🏠' : p.kind === 'work' ? '💼' : '🌙'}
+                      </span>
+                      <div>
+                        <b>{p.label}</b>
+                        <small>{p.kind === 'work' ? `累计 ${Math.round(p.score / 60)} 小时` : `${p.score} 晚`}</small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
               <button className="privacy-note" type="button" disabled>
                 <Ghost size={19} />
-                <div><b>足迹默认仅你可见</b><small>功能上线后你可以随时删除地点历史</small></div>
+                <div><b>足迹默认仅你可见</b><small>过夜地点 / Home / Work 仅保存在你自己的账号下</small></div>
               </button>
             </div>
           )}

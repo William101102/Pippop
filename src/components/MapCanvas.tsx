@@ -1,18 +1,26 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { esc, initials } from '../lib/format';
+import type { SignificantPlace } from '../lib/places';
 import type { Friend, LiveLocation, Profile } from '../types';
 
 interface Props {
   me: Profile;
   friends: Friend[];
   myLocation: LiveLocation | null;
+  places?: SignificantPlace[];
   onSelectFriend: (friend: Friend) => void;
   onSelectMe: () => void;
   focus?: { lat: number; lng: number } | null;
 }
 
-export function MapCanvas({ me, friends, myLocation, onSelectFriend, onSelectMe, focus }: Props) {
+const PLACE_STYLE: Record<string, { icon: string; color: string }> = {
+  overnight: { icon: '🌙', color: '#25c9b7' },
+  home: { icon: '🏠', color: '#ff6f61' },
+  work: { icon: '💼', color: '#8b7cf6' },
+};
+
+export function MapCanvas({ me, friends, myLocation, places = [], onSelectFriend, onSelectMe, focus }: Props) {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.LayerGroup | null>(null);
@@ -47,6 +55,22 @@ export function MapCanvas({ me, friends, myLocation, onSelectFriend, onSelectMe,
       marker.on('click', () => (mine ? onSelectMe() : onSelectFriend(p as Friend)));
     });
   }, [me, friends, myLocation, onSelectFriend, onSelectMe]);
+
+  // Private significant places (overnight spots / home / work).
+  useEffect(() => {
+    if (!layersRef.current) return;
+    const group = layersRef.current;
+    places.forEach((p) => {
+      const style = PLACE_STYLE[p.kind] || PLACE_STYLE.overnight;
+      const icon = L.divIcon({
+        className: 'place-pin-shell',
+        html: `<div class="place-pin" style="--place:${style.color}"><span>${style.icon}</span><b>${esc(p.label)}</b></div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+      L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -500 }).addTo(group);
+    });
+  }, [places]);
 
   useEffect(() => {
     if (!focus || !mapRef.current) return;
