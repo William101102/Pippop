@@ -18,15 +18,20 @@ alter table public.messages add column if not exists metadata jsonb not null def
 alter table public.messages add column if not exists read_at timestamptz;
 
 create table if not exists public.location_privacy (
+  id bigint generated always as identity primary key,
   owner_id uuid not null references public.profiles(id) on delete cascade,
   viewer_id uuid references public.profiles(id) on delete cascade,
   mode text not null default 'precise' check (mode in ('precise','blurred','frozen')),
   frozen_lat double precision,
   frozen_lng double precision,
   expires_at timestamptz,
-  updated_at timestamptz not null default now(),
-  primary key (owner_id, viewer_id)
+  updated_at timestamptz not null default now()
 );
+
+create unique index if not exists location_privacy_account_default
+  on public.location_privacy (owner_id) where viewer_id is null;
+create unique index if not exists location_privacy_friend_override
+  on public.location_privacy (owner_id, viewer_id) where viewer_id is not null;
 
 create table if not exists public.location_history (
   id bigint generated always as identity primary key,

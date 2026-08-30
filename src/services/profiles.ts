@@ -48,15 +48,30 @@ export async function searchProfiles(excludeId: string, query: string, limit = 2
 }
 
 export async function setGhostMode(ownerId: string, mode: GhostMode, frozen?: { lat: number; lng: number }) {
-  await supabase.from('location_privacy').delete().eq('owner_id', ownerId).is('viewer_id', null);
-  const { error } = await supabase.from('location_privacy').insert({
+  const row = {
     owner_id: ownerId,
     viewer_id: null,
     mode,
     frozen_lat: mode === 'frozen' ? frozen?.lat ?? null : null,
     frozen_lng: mode === 'frozen' ? frozen?.lng ?? null : null,
     updated_at: new Date().toISOString(),
-  });
+  };
+
+  const { data: existing, error: readError } = await supabase
+    .from('location_privacy')
+    .select('id')
+    .eq('owner_id', ownerId)
+    .is('viewer_id', null)
+    .maybeSingle();
+  if (readError && readError.code !== '42P01') throw readError;
+
+  if (existing?.id != null) {
+    const { error } = await supabase.from('location_privacy').update(row).eq('id', existing.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from('location_privacy').insert(row);
   if (error && error.code !== '42P01') throw error;
 }
 
@@ -73,14 +88,40 @@ export async function getGhostMode(ownerId: string): Promise<GhostMode> {
 
 /** Per-friend override; `null` clears it so the account default applies again. */
 export async function setFriendGhostMode(ownerId: string, viewerId: string, mode: GhostMode | null) {
-  await supabase.from('location_privacy').delete().eq('owner_id', ownerId).eq('viewer_id', viewerId);
-  if (!mode) return;
-  const { error } = await supabase.from('location_privacy').insert({
+  if (!mode) {
+    const { error } = await supabase
+      .from('location_privacy')
+      .delete()
+      .eq('owner_id', ownerId)
+      .eq('viewer_id', viewerId);
+    if (error && error.code !== '42P01') throw error;
+    return;
+  }
+
+  const row = {
     owner_id: ownerId,
     viewer_id: viewerId,
     mode,
+    frozen_lat: null,
+    frozen_lng: null,
     updated_at: new Date().toISOString(),
-  });
+  };
+
+  const { data: existing, error: readError } = await supabase
+    .from('location_privacy')
+    .select('id')
+    .eq('owner_id', ownerId)
+    .eq('viewer_id', viewerId)
+    .maybeSingle();
+  if (readError && readError.code !== '42P01') throw readError;
+
+  if (existing?.id != null) {
+    const { error } = await supabase.from('location_privacy').update(row).eq('id', existing.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from('location_privacy').insert(row);
   if (error && error.code !== '42P01') throw error;
 }
 

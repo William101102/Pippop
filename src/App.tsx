@@ -75,6 +75,16 @@ function initials(name: string) { return name.trim().slice(0, 1).toUpperCase(); 
 function safeHtml(value: string) {
   return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
+function pinAvatarSrc(url: string, version: number) {
+  const join = url.includes('?') ? '&' : '?';
+  return `${url}${join}pin=${version}`;
+}
+function pinFaceHtml(avatarUrl: string | null | undefined, displayName: string, version: number) {
+  if (avatarUrl?.trim()) {
+    return `<img src="${safeHtml(pinAvatarSrc(avatarUrl, version))}" alt="" referrerpolicy="no-referrer" loading="eager">`;
+  }
+  return `<span>${safeHtml(initials(displayName))}</span>`;
+}
 function isUserUuid(id: string) { return UUID_RE.test(id); }
 
 /** Reads the `?add=username` invite deep link once on boot. */
@@ -174,6 +184,7 @@ function App() {
   const [toast, setToast] = useState('');
   const [search, setSearch] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [pinAvatarVersion, setPinAvatarVersion] = useState(0);
   const [locating, setLocating] = useState(false);
   const [waving, setWaving] = useState(false);
   const [mapTileError, setMapTileError] = useState<string | null>(null);
@@ -577,9 +588,10 @@ function App() {
       }
       const { p, l, mine } = group.items[0];
       const color = /^#[0-9a-f]{6}$/i.test(p.avatar_color) ? p.avatar_color : '#ff6658';
-      const face = p.avatar_url
-        ? `<img src="${safeHtml(p.avatar_url)}" alt="" referrerpolicy="no-referrer">`
-        : `<span>${safeHtml(initials(p.display_name))}</span>`;
+      const avatarVersion = mine
+        ? pinAvatarVersion
+        : (p.avatar_url?.length ?? 0) + (p.id?.length ?? 0);
+      const face = pinFaceHtml(p.avatar_url, p.display_name, avatarVersion);
       // Green ring = this person is sharing a live fix. Gray ring = they froze
       // sharing, or their last ping is old enough that it is only a last-seen.
       const theirMode = 'ghost_mode' in p ? p.ghost_mode : undefined;
@@ -617,7 +629,7 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -400 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, places, nearbyPlaces, mapReady, mapZoom, freshReaction, openFriend, ghostMode]);
+  }, [friends, location, profile, profile?.avatar_url, places, nearbyPlaces, mapReady, mapZoom, freshReaction, openFriend, ghostMode, pinAvatarVersion]);
 
   // Plain circles rather than a heatmap plugin: with history bucketed into grid
   // cells server side, one translucent circle per cell already reads as heat and
@@ -708,6 +720,8 @@ function App() {
     try {
       const avatarUrl = await uploadProfileAvatar(profile.id, file);
       setProfile(current => current ? { ...current, avatar_url: avatarUrl } : current);
+      setFriends(current => current.map(f => f.id === profile.id ? { ...f, avatar_url: avatarUrl } : f));
+      setPinAvatarVersion(version => version + 1);
       notify('新头像已经换好啦 ✨');
     } catch (error) {
       notify(error instanceof Error ? error.message : '头像上传失败，请稍后再试');

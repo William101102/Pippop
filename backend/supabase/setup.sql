@@ -105,15 +105,33 @@ alter table public.messages add constraint messages_body_length
 -- Privacy, history and places
 -- ----------------------------------------------------------------------------
 create table if not exists public.location_privacy (
+  id bigint generated always as identity,
   owner_id uuid not null references public.profiles(id) on delete cascade,
   viewer_id uuid references public.profiles(id) on delete cascade,
   mode text not null default 'precise' check (mode in ('precise', 'blurred', 'frozen')),
   frozen_lat double precision,
   frozen_lng double precision,
   expires_at timestamptz,
-  updated_at timestamptz not null default now(),
-  primary key (owner_id, viewer_id)
+  updated_at timestamptz not null default now()
 );
+
+-- Account-wide defaults use viewer_id = null, which cannot sit in a composite PK.
+alter table public.location_privacy drop constraint if exists location_privacy_pkey;
+alter table public.location_privacy add column if not exists id bigint generated always as identity;
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.location_privacy'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.location_privacy add constraint location_privacy_pkey primary key (id);
+  end if;
+exception when duplicate_object then null;
+end $$;
+create unique index if not exists location_privacy_account_default
+  on public.location_privacy (owner_id) where viewer_id is null;
+create unique index if not exists location_privacy_friend_override
+  on public.location_privacy (owner_id, viewer_id) where viewer_id is not null;
 
 create table if not exists public.location_history (
   id bigint generated always as identity primary key,
