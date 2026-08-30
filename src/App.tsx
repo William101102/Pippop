@@ -2,18 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed, LogOut,
-  MapPin, MessageCircle, Search, Send, SmilePlus, Sparkles, Users, X,
+  MapPin, MessageCircle, Search, Send, Share2, SmilePlus, Sparkles, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
 import { ChatPanel } from './components/ChatPanel';
 import { CheckInPanel } from './components/CheckInPanel';
 import { CompleteProfileScreen } from './components/CompleteProfileScreen';
+import { FriendRail } from './components/FriendRail';
 import { NearbyPanel } from './components/NearbyPanel';
 import { NotificationsPanel, type UnreadPreview } from './components/NotificationsPanel';
 import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
 import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
+import { friendShareText, inviteText, inviteUrl, shareText } from './lib/geo';
 import { isConfigured, supabase } from './lib/supabase';
 import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
 import { loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
@@ -195,7 +197,14 @@ function App() {
 
   useEffect(() => {
     const invite = readInviteQuery();
-    if (invite) setInviteQuery(invite);
+    if (!invite) return;
+    setInviteQuery(invite);
+    // Drop the param so a refresh does not reopen the add-friend sheet.
+    try {
+      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    } catch {
+      // history rewriting is cosmetic
+    }
   }, []);
 
   // Feed own fixes into private significant-place history (overnight/home/work).
@@ -536,6 +545,20 @@ function App() {
     }
   }
 
+  async function shareCard(target: Profile | Friend) {
+    const mine = target.id === profile?.id;
+    const text = mine
+      ? inviteText(target.username, target.display_name)
+      : friendShareText(target.username, target.display_name);
+    const result = await shareText(
+      mine ? 'Pinpop 好友邀请' : `在 Pinpop 上加 ${target.display_name}`,
+      text,
+      inviteUrl(target.username),
+    );
+    if (result === 'cancelled') return;
+    notify(result === 'shared' ? '已分享 ✨' : '链接已复制，发给朋友就能加好友');
+  }
+
   async function waveAtEveryone() {
     if (!profile || waving) return;
     if (!friends.length) {
@@ -709,6 +732,15 @@ function App() {
           {panel === 'friends' && (
             <>
               <RequestsInbox requests={requests} busyIds={requestBusy} onRespond={respondToRequest} />
+              <FriendRail
+                me={profile}
+                friends={friends}
+                unread={unread}
+                activeId={selected?.id ?? null}
+                onSelectMe={() => { setSelected(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
+                onSelectFriend={(f) => { setSelected(f); if (f.location) focusMapOn(f.location.lat, f.location.lng); }}
+                onAddFriend={() => setPanel('add')}
+              />
               <div className="search"><Search size={18} /><input placeholder="搜索朋友" value={search} onChange={e => setSearch(e.target.value)} /></div>
               <div className="friend-list">
                 {filtered.length === 0 && (
@@ -728,9 +760,10 @@ function App() {
                   </button>
                 ))}
               </div>
-              {friends.length > 0 && (
-                <button className="primary compact wide" type="button" onClick={() => setPanel('add')}>添加更多朋友</button>
-              )}
+              <button className="share-card-button" type="button" onClick={() => shareCard(profile)}>
+                <Share2 size={16} />
+                <div><b>分享我的名片</b><small>朋友点开链接就能直接加你</small></div>
+              </button>
             </>
           )}
 
@@ -769,6 +802,11 @@ function App() {
                 </div>
                 <div><span>@{profile.username}</span><strong>{profile.display_name}</strong><small>让朋友一眼就在地图上找到你</small></div>
               </div>
+
+              <button className="share-card-button" type="button" onClick={() => shareCard(profile)}>
+                <Share2 size={16} />
+                <div><b>分享我的名片</b><small>发链接给朋友，点开就能加你</small></div>
+              </button>
 
               <StatusEditor profile={profile} onSave={saveStatus} />
 
@@ -927,6 +965,7 @@ function App() {
               notify(result.error || `已问 ${selected.display_name} 在干什么 👀`);
             }}><Sparkles /><span>What&apos;s Up</span></button>
             <button type="button" onClick={() => { openChat(selected.id); setSelected(null); }}><MessageCircle /><span>聊天</span></button>
+            <button type="button" onClick={() => shareCard(selected)}><Share2 /><span>分享名片</span></button>
           </div>
           <div className="quick-message">
             <input
