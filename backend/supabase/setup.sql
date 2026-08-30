@@ -132,6 +132,16 @@ create unique index if not exists location_privacy_account_default
   on public.location_privacy (owner_id) where viewer_id is null;
 create unique index if not exists location_privacy_friend_override
   on public.location_privacy (owner_id, viewer_id) where viewer_id is not null;
+-- The client always upserts with .upsert(row, { onConflict: 'owner_id,viewer_id' })
+-- — both the account-default row (viewer_id = owner_id) and per-friend
+-- overrides use a non-null viewer_id; it never writes viewer_id = null itself.
+-- PostgREST's on_conflict target can only resolve to a plain, non-partial
+-- unique index/constraint on exactly those columns, and neither partial index
+-- above qualifies, so every save failed with 42P10 "no unique or exclusion
+-- constraint matching the ON CONFLICT specification" — the real cause behind
+-- "隐私设置保存失败". This plain index is what upsert actually needs.
+create unique index if not exists location_privacy_owner_viewer_key
+  on public.location_privacy (owner_id, viewer_id);
 
 create table if not exists public.location_history (
   id bigint generated always as identity primary key,

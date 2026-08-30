@@ -85,9 +85,9 @@ function cssBackgroundUrl(url: string) {
 function pinFaceHtml(avatarUrl: string | null | undefined, displayName: string, version: number) {
   if (avatarUrl?.trim()) {
     const src = cssBackgroundUrl(pinAvatarSrc(avatarUrl, version));
-    return `<span class="pin-photo" style="background-image:url('${src}')"></span>`;
+    return `<span class="pin-face-fill"><span class="pin-photo" style="background-image:url('${src}')"></span></span>`;
   }
-  return `<span>${safeHtml(initials(displayName))}</span>`;
+  return `<span class="pin-face-fill"><span>${safeHtml(initials(displayName))}</span></span>`;
 }
 function isUserUuid(id: string) { return UUID_RE.test(id); }
 
