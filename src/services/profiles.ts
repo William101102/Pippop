@@ -108,3 +108,19 @@ export async function updateBattery(userId: string, level: number, charging: boo
     .eq('id', userId);
   if (error) throw error;
 }
+
+/**
+ * Irreversible. The server cascades every row from auth.users and drops the
+ * stored avatars, so there is nothing left to clean up client side beyond
+ * ending the session.
+ */
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) {
+    if (error.code === '42883') {
+      throw new Error('服务端还没有安装账号删除功能，请先运行 setup.sql');
+    }
+    throw error;
+  }
+  await supabase.auth.signOut();
+}

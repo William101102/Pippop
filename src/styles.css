@@ -17,6 +17,41 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; }
+
+/* ---------------------------------------------------------------------------
+   Native shell. These are the tells that separate a web page from an app:
+   selectable labels, blue tap flashes, rubber-band overscroll and momentum-less
+   scrolling. Applied everywhere so the PWA benefits too.
+   --------------------------------------------------------------------------- */
+html, body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  text-size-adjust: 100%;
+}
+body, button, .sheet, .dock, .topbar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.sheet, .friend-list, .chat-scroll, .nearby-panel, .world-panel, .notifications-panel {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* Buttons should feel pressed immediately rather than waiting on a hover state. */
+button { touch-action: manipulation; }
+button:active:not(:disabled) { transform: scale(.97); }
+.dock button, .friend-row, .rail-item { transition: transform .12s ease, background .15s ease, color .15s ease; }
+
+/* The status bar overlays the web view, so the top row needs real inset room. */
+body.native .topbar { top: max(14px, env(safe-area-inset-top)); }
+body.native .toast { top: calc(env(safe-area-inset-top) + 62px); }
+/* No browser chrome to absorb the gesture area at the bottom. */
+body.native .dock { bottom: max(10px, env(safe-area-inset-bottom)); }
+body.native .sheet { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
 button, input { font: inherit; }
 button { color: inherit; }
 .splash { height: 100vh; display: grid; place-items: center; background: linear-gradient(145deg, #fff5e7, #f2edff); }
@@ -423,7 +458,12 @@ button { color: inherit; }
 .chip.selected { border-color: transparent; color: #fff; background: linear-gradient(135deg, var(--coral), var(--pink)); }
 .chip-row.tight { margin: 0; gap: 4px; }
 .chip-row.tight .chip { padding: 6px 8px; font-size: 10px; }
-.danger-button { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 4px; padding: 13px; border: 1px solid #f3dde2; border-radius: 16px; color: #c0392b; background: #fff5f6; font-size: 12px; font-weight: 800; cursor: pointer; }
+.danger-button { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 4px; padding: 13px; border: 1px solid #f3dde2; border-radius: 16px; color: #c0392b; background: #fff5f6; font-size: 12px; font-weight: 800; cursor: pointer; }
+.danger-button.solid { border-color: #c0392b; color: #fff; background: #c0392b; }
+.danger-zone { display: grid; gap: 8px; padding: 12px; border: 1px solid #f3dde2; border-radius: 20px; background: #fffafa; }
+.danger-copy { margin: 0; color: #8a5a56; font-size: 11px; font-weight: 600; line-height: 1.5; }
+.danger-zone .chip-row { gap: 8px; }
+.danger-zone .chip { flex: 1; justify-content: center; }
 .primary.compact.wide { width: 100%; margin-top: 6px; }
 
 /* Map pins for saved places and check-ins */

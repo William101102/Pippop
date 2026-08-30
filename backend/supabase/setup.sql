@@ -483,6 +483,35 @@ create policy "users delete their own avatar" on storage.objects for delete to a
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ----------------------------------------------------------------------------
+-- In-app account deletion. App Store guideline 5.1.1(v) requires this for any
+-- app that lets users create an account, and deleting from auth.users needs
+-- privileges the anon role does not have, hence security definer.
+--
+-- profiles.id cascades from auth.users and every other table cascades from
+-- profiles, so one delete clears all of the user's rows. Avatars live in
+-- storage and are keyed by path rather than a foreign key, so they go manually.
+-- ----------------------------------------------------------------------------
+create or replace function public.delete_my_account()
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  delete from storage.objects
+   where bucket_id = 'avatars'
+     and (storage.foldername(name))[1] = uid::text;
+
+  delete from auth.users where id = uid;
+end;
+$$;
+
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
+
+-- ----------------------------------------------------------------------------
 -- Every Auth user gets a profile, including ones created before this ran.
 -- ----------------------------------------------------------------------------
 create or replace function public.handle_new_user()

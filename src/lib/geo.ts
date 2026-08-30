@@ -1,3 +1,5 @@
+import { isNative, nativeShare } from './native';
+
 export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -8,8 +10,18 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * Invite links have to be openable by someone who does not have the app, and
+ * inside the native shell location.origin is capacitor://localhost, so the
+ * public web build is always the link target.
+ */
 export function inviteUrl(username: string) {
-  const base = `${location.origin}${location.pathname}`;
+  const configured = import.meta.env.VITE_PUBLIC_APP_URL?.replace(/\/+$/, '');
+  const base = configured
+    ? `${configured}/`
+    : isNative
+      ? 'https://william101102.github.io/zenly-app/'
+      : `${location.origin}${location.pathname}`;
   return `${base}?add=${encodeURIComponent(username)}`;
 }
 
@@ -37,6 +49,9 @@ export async function copyText(text: string) {
 }
 
 export async function shareText(title: string, text: string, url: string) {
+  const native = await nativeShare(title, text, url);
+  if (native !== 'unsupported') return native;
+
   if (navigator.share) {
     try {
       await navigator.share({ title, text, url });

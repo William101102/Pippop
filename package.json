@@ -8,9 +8,26 @@
     "build": "tsc -b && vite build && cp dist/index.html dist/404.html",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "build:native": "CAP_BUILD=1 tsc -b && CAP_BUILD=1 vite build",
+    "ios:add": "npx cap add ios && node ios-setup/apply-info-plist.mjs",
+    "ios:plist": "node ios-setup/apply-info-plist.mjs",
+    "ios:sync": "npm run build:native && npx cap sync ios && node ios-setup/apply-info-plist.mjs",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.26",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/geolocation": "^8.2.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.0",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@supabase/supabase-js": "^2.57.4",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
@@ -18,6 +35,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@types/leaflet": "^1.9.15",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",

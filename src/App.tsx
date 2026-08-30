@@ -16,13 +16,15 @@ import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
 import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
 import { friendShareText, inviteText, inviteUrl, shareText } from './lib/geo';
+import { createFixGate, watchLocation } from './lib/location';
+import { dismissSplash, haptic, isNative, onAppResume, openAppSettings } from './lib/native';
 import { isConfigured, supabase } from './lib/supabase';
 import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
 import { loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
 import {
-  completeProfile, getFriendGhostModes, getGhostMode, searchProfiles,
+  completeProfile, deleteMyAccount, getFriendGhostModes, getGhostMode, searchProfiles,
   setFriendGhostMode, setGhostMode as persistGhostMode, updateStatus,
 } from './services/profiles';
 import type {
@@ -148,6 +150,9 @@ function App() {
   const [locating, setLocating] = useState(false);
   const [waving, setWaving] = useState(false);
   const [mapTileError, setMapTileError] = useState<string | null>(null);
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [quickDraft, setQuickDraft] = useState('');
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
@@ -166,9 +171,17 @@ function App() {
   } = useMessages(profile?.id);
   useBattery(profile?.id);
 
+  // Single choke point for user-facing feedback, so it is also where the app
+  // earns its haptics. Failures read as 失败/错误/不能/需要 in this codebase.
   const notify = useCallback((text: string) => {
+    haptic(/失败|错误|不能|无法|需要先/.test(text) ? 'warning' : 'success');
     setToast(text);
     window.setTimeout(() => setToast(''), 3200);
+  }, []);
+
+  const switchPanel = useCallback((next: Panel) => {
+    haptic('select');
+    setPanel(next);
   }, []);
 
   const reloadFriends = useCallback(async (userId: string) => {
@@ -274,27 +287,28 @@ function App() {
   }, [inviteQuery, profile]);
 
   useEffect(() => {
-    if (!signedIn || !profile || !navigator.geolocation) return;
-    const watch = navigator.geolocation.watchPosition(
-      async (p) => {
+    if (!signedIn || !profile) return;
+    const gate = createFixGate();
+    return watchLocation(
+      (fix) => {
         const next: LiveLocation = {
           user_id: profile.id,
-          lat: p.coords.latitude,
-          lng: p.coords.longitude,
-          accuracy: p.coords.accuracy,
-          speed: p.coords.speed,
+          lat: fix.lat,
+          lng: fix.lng,
+          accuracy: fix.accuracy,
+          speed: fix.speed,
           updated_at: new Date().toISOString(),
         };
         setLocation(next);
         setLocationLabel(null);
-        if (isUserUuid(profile.id) && ghostMode !== 'frozen') {
-          await upsertMyLocation(next).catch(() => undefined);
-        }
+        setLocationDenied(false);
+        if (!isUserUuid(profile.id) || ghostMode === 'frozen') return;
+        if (!gate.shouldPersist(fix)) return;
+        gate.commit(fix);
+        upsertMyLocation(next).catch(() => undefined);
       },
-      () => undefined,
-      { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 },
+      () => setLocationDenied(true),
     );
-    return () => navigator.geolocation.clearWatch(watch);
   }, [signedIn, profile, ghostMode]);
 
   const focusMapOn = useCallback((lat: number, lng: number, zoom = 16) => {
@@ -360,6 +374,31 @@ function App() {
     didAutoFocus.current = true;
     focusMapOn(location.lat, location.lng);
   }, [location, mapReady, focusMapOn]);
+
+  // Hold the native splash until a real screen is behind it, so launch never
+  // flashes an empty map. Sign-in and profile setup never mount a map, so those
+  // count as ready too, and a timeout guarantees the splash cannot wedge the app
+  // if any of those signals never arrive.
+  const firstScreenReady =
+    mapReady || (sessionReady && !signedIn) || (sessionReady && profileLoaded && !profile);
+  useEffect(() => {
+    if (firstScreenReady) dismissSplash();
+  }, [firstScreenReady]);
+  useEffect(() => {
+    const bail = window.setTimeout(dismissSplash, 4000);
+    return () => window.clearTimeout(bail);
+  }, []);
+
+  // Friends' pins go stale while the app is suspended and realtime is dropped,
+  // so treat coming back to the foreground as a refresh.
+  useEffect(() => {
+    if (!profile?.id) return;
+    const meId = profile.id;
+    return onAppResume(() => {
+      reloadFriends(meId).catch(() => undefined);
+      refreshUnread();
+    });
+  }, [profile?.id, reloadFriends, refreshUnread]);
 
   useEffect(() => {
     if (!mapReady || !layers.current || !profile) return;
@@ -545,6 +584,19 @@ function App() {
     }
   }
 
+  async function confirmDeleteAccount() {
+    setDeleting(true);
+    try {
+      await deleteMyAccount();
+      // The auth listener tears down the rest of the state on sign-out.
+      setDeleteArmed(false);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '删除失败，请稍后再试');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function shareCard(target: Profile | Friend) {
     const mine = target.id === profile?.id;
     const text = mine
@@ -653,10 +705,27 @@ function App() {
       {mapTileError && <div className="map-error-banner">{mapTileError}</div>}
       {!location && (
         <div className="map-hint">
-          <p>开启浏览器定位后，你的位置会显示在地图上。</p>
-          <button type="button" className="primary compact" onClick={locateMe} disabled={locating}>
-            {locating ? '定位中…' : '开启定位'}
-          </button>
+          {locationDenied ? (
+            <>
+              <p>定位权限被拒绝了，朋友看不到你的位置。{isNative ? '到系统设置里允许「使用期间」或「始终」即可。' : '请在浏览器地址栏的权限里重新允许定位。'}</p>
+              {isNative ? (
+                <button type="button" className="primary compact" onClick={() => { haptic('light'); openAppSettings(); }}>
+                  打开设置
+                </button>
+              ) : (
+                <button type="button" className="primary compact" onClick={locateMe} disabled={locating}>
+                  {locating ? '定位中…' : '重试定位'}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <p>开启定位后，你的位置会显示在地图上。</p>
+              <button type="button" className="primary compact" onClick={() => { haptic('light'); locateMe(); }} disabled={locating}>
+                {locating ? '定位中…' : '开启定位'}
+              </button>
+            </>
+          )}
         </div>
       )}
       {locationLabel && <div className="location-label">{locationLabel}</div>}
@@ -684,13 +753,13 @@ function App() {
       </div>
 
       <nav className="dock">
-        <button className={panel === 'friends' ? 'active' : ''} type="button" onClick={() => setPanel('friends')}><Users /><span>朋友</span></button>
-        <button className={panel === 'places' ? 'active' : ''} type="button" onClick={() => setPanel('places')}><Search /><span>探索</span></button>
-        <button className="center-action" type="button" disabled={waving} onClick={waveAtEveryone} aria-label="向所有朋友挥手">
+        <button className={panel === 'friends' ? 'active' : ''} type="button" onClick={() => switchPanel('friends')}><Users /><span>朋友</span></button>
+        <button className={panel === 'places' ? 'active' : ''} type="button" onClick={() => switchPanel('places')}><Search /><span>探索</span></button>
+        <button className="center-action" type="button" disabled={waving} onClick={() => { haptic('heavy'); waveAtEveryone(); }} aria-label="向所有朋友挥手">
           <span>{waving ? '…' : '👋'}</span>
         </button>
-        <button className={panel === 'world' ? 'active' : ''} type="button" onClick={() => setPanel('world')}><Footprints /><span>足迹</span></button>
-        <button className={panel === 'messages' ? 'active' : ''} type="button" onClick={() => setPanel('messages')}>
+        <button className={panel === 'world' ? 'active' : ''} type="button" onClick={() => switchPanel('world')}><Footprints /><span>足迹</span></button>
+        <button className={panel === 'messages' ? 'active' : ''} type="button" onClick={() => switchPanel('messages')}>
           <MessageCircle /><span>消息</span>
           {totalUnread > 0 && <span className="dot-badge">{totalUnread > 9 ? '9+' : totalUnread}</span>}
         </button>
@@ -944,6 +1013,29 @@ function App() {
                   ))}
                 </div>
               )}
+
+              <div className="eyebrow">账号</div>
+              <div className="danger-zone">
+                {deleteArmed ? (
+                  <>
+                    <p className="danger-copy">
+                      删除后你的位置、好友、消息和打卡记录会立即永久消失，无法恢复。
+                    </p>
+                    <div className="chip-row">
+                      <button className="chip" type="button" onClick={() => setDeleteArmed(false)} disabled={deleting}>
+                        取消
+                      </button>
+                      <button className="danger-button solid" type="button" onClick={confirmDeleteAccount} disabled={deleting}>
+                        {deleting ? '删除中…' : '确认永久删除'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button className="danger-button" type="button" onClick={() => { haptic('warning'); setDeleteArmed(true); }}>
+                    删除账号
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </aside>

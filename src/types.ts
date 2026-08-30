@@ -16,7 +16,8 @@ export interface LiveLocation {
   user_id: string;
   lat: number;
   lng: number;
-  accuracy?: number;
+  // Both columns are nullable, and background fixes often omit speed.
+  accuracy?: number | null;
   speed?: number | null;
   updated_at: string;
 }

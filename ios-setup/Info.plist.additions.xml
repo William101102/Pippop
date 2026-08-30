@@ -1,0 +1,38 @@
+<!--
+  Paste these into ios/App/App/Info.plist inside the top-level <dict>, after
+  running `npx cap add ios`.
+
+  App Review rejects location apps whose purpose strings do not say what the
+  data is used for, so each one names the feature and who sees it.
+-->
+
+<!-- Shown the first time the app asks for location. -->
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Pinpop 用你的位置把你显示在地图上，只有你已通过的好友能看到，你可以随时切换为模糊或冻结。</string>
+
+<!-- Shown when the app asks to keep updating in the background. -->
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>允许「始终」后，即使 Pinpop 在后台，好友也能看到你最新的位置。关闭后好友只会看到你最后一次打开应用时的位置。</string>
+
+<!-- Older iOS versions read this key instead. -->
+<key>NSLocationAlwaysUsageDescription</key>
+<string>允许「始终」后，即使 Pinpop 在后台，好友也能看到你最新的位置。</string>
+
+<!-- Required for the avatar picker. -->
+<key>NSPhotoLibraryUsageDescription</key>
+<string>选择一张照片作为你的 Pinpop 头像。</string>
+<key>NSCameraUsageDescription</key>
+<string>拍一张照片作为你的 Pinpop 头像。</string>
+
+<!--
+  Background location must be declared or iOS suspends the watcher. Do not add
+  modes the app does not actually use; unused modes are a common rejection.
+-->
+<key>UIBackgroundModes</key>
+<array>
+  <string>location</string>
+</array>
+
+<!-- The map and sheets handle their own safe-area insets. -->
+<key>UIViewControllerBasedStatusBarAppearance</key>
+<false/>
