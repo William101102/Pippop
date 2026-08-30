@@ -74,6 +74,7 @@ button { color: inherit; }
   width: 100%;
   height: 100%;
   z-index: 1;
+  background: #e6ecdf;
 }
 .leaflet-tile-pane { filter: saturate(.72) contrast(.9) brightness(1.08) sepia(.08); }
 .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,.72) !important; }
@@ -161,8 +162,8 @@ button { color: inherit; }
 .dock svg { width: 21px; }
 .dock span { font-size: 9px; font-weight: 800; }
 .dock button.active { color: var(--violet); }
-.dock .center-action { align-self: center; justify-self: center; width: 60px; height: 60px; border-radius: 22px; color: #fff; background: linear-gradient(145deg, #ff7b42, #ff3e86); box-shadow: 0 10px 24px rgba(255,73,105,.38); transform: translateY(-11px) rotate(-3deg); }
-.dock .center-action span { font-size: 27px; }
+.dock .center-action { align-self: center; justify-self: center; place-content: center; gap: 0; width: 58px; height: 58px; border-radius: 20px; color: #fff; background: linear-gradient(145deg, #ff7b42, #ff3e86); box-shadow: 0 10px 24px rgba(255,73,105,.38); }
+.dock .center-action span { font-size: 26px; line-height: 1; }
 
 /* Sheets and rows */
 .sheet { position: absolute; z-index: 520; left: 20px; bottom: 110px; width: 400px; max-height: min(69vh, 660px); overflow: auto; padding: 12px 16px 20px; border: 2px solid rgba(255,255,255,.9); border-radius: 30px; background: rgba(255,255,255,.96); box-shadow: var(--shadow); backdrop-filter: blur(24px); }
@@ -299,7 +300,7 @@ button { color: inherit; }
 @media (max-width: 410px) {
   .name-fields { grid-template-columns: 1fr; }
   .dock { height: 72px; }
-  .dock .center-action { width: 55px; height: 55px; }
+  .dock .center-action { width: 52px; height: 52px; }
   .map-mood small { display: none; }
 }
 

@@ -116,11 +116,15 @@ function App() {
   const [locating, setLocating] = useState(false);
   const [mapTileError, setMapTileError] = useState<string | null>(null);
   const [quickDraft, setQuickDraft] = useState('');
-  const mapEl = useRef<HTMLDivElement>(null);
+  // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
+  const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const map = useRef<L.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const didAutoFocus = useRef(false);
+  const locationRef = useRef<LiveLocation | null>(null);
+  locationRef.current = location;
   const { places, recordFix } = useSignificantPlaces(profile?.id, signedIn && Boolean(profile));
   const { threads, chatWith, openChat, closeChat, send, wave, pushIncoming } = useMessages(profile?.id);
 
@@ -238,45 +242,63 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!profile || !mapEl.current || map.current) return;
-    const start: [number, number] = location ? [location.lat, location.lng] : WORLD_CENTER;
-    const zoom = location ? 14 : WORLD_ZOOM;
-    map.current = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(start, zoom);
+    if (!mapNode || map.current) return;
+    const start: [number, number] = locationRef.current
+      ? [locationRef.current.lat, locationRef.current.lng]
+      : WORLD_CENTER;
+    const zoom = locationRef.current ? 14 : WORLD_ZOOM;
+    const instance = L.map(mapNode, { zoomControl: false, attributionControl: true }).setView(start, zoom);
+    map.current = instance;
+
     const tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      crossOrigin: true,
       attribution: '&copy; OpenStreetMap contributors',
     });
+    let failures = 0;
     tileLayer.on('tileerror', () => {
-      setMapTileError('地图瓦片加载失败，请检查网络后刷新页面。');
+      failures += 1;
+      // A couple of dropped tiles at the edge of the viewport is normal; only warn on sustained failure.
+      if (failures >= 4) setMapTileError('地图瓦片加载失败，请检查网络后刷新页面。');
     });
-    tileLayer.addTo(map.current);
+    tileLayer.on('load', () => {
+      failures = 0;
+      setMapTileError(null);
+    });
+    tileLayer.addTo(instance);
     tileLayerRef.current = tileLayer;
-    layers.current = L.layerGroup().addTo(map.current);
+    layers.current = L.layerGroup().addTo(instance);
 
-    const resize = () => map.current?.invalidateSize();
+    const resize = () => instance.invalidateSize();
     const observer = new ResizeObserver(resize);
-    observer.observe(mapEl.current);
+    observer.observe(mapNode);
     window.addEventListener('resize', resize);
-    setTimeout(resize, 100);
+    // Leaflet needs a size recheck once the sheet/dock layout settles.
+    const t1 = window.setTimeout(resize, 60);
+    const t2 = window.setTimeout(resize, 400);
+    setMapReady(true);
 
     return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
       observer.disconnect();
       window.removeEventListener('resize', resize);
       tileLayerRef.current = null;
-      map.current?.remove();
-      map.current = null;
       layers.current = null;
+      map.current = null;
+      setMapReady(false);
+      instance.remove();
     };
-  }, [profile, focusMapOn]);
+  }, [mapNode]);
 
   useEffect(() => {
-    if (!location || !map.current || didAutoFocus.current) return;
+    if (!location || !mapReady || didAutoFocus.current) return;
     didAutoFocus.current = true;
     focusMapOn(location.lat, location.lng);
-  }, [location, focusMapOn]);
+  }, [location, mapReady, focusMapOn]);
 
   useEffect(() => {
-    if (!layers.current || !profile) return;
+    if (!mapReady || !layers.current || !profile) return;
     layers.current.clearLayers();
     const people: { p: Profile | Friend; l?: LiveLocation | null; mine?: boolean }[] = [
       { p: profile, l: location, mine: true },
@@ -313,7 +335,7 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -500 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, places]);
+  }, [friends, location, profile, places, mapReady]);
 
   async function locateMe() {
     if (locating || !profile) return;
@@ -410,7 +432,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <div ref={mapEl} className="map" />
+      <div ref={setMapNode} className="map" />
       {mapTileError && <div className="map-error-banner">{mapTileError}</div>}
       {!location && (
         <div className="map-hint">
