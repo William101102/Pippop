@@ -65,6 +65,16 @@
   }
   #map{ position:absolute; inset:0; z-index:1; }
   .leaflet-control-attribution{ font-size:9px !important; }
+  .leaflet-marker-bubble{ background:transparent !important; border:none !important; }
+
+  .locateBtn{
+    position:absolute; right:14px; bottom:150px; z-index:26;
+    width:42px; height:42px; border-radius:50%; border:none;
+    background:rgba(255,255,255,.94); color:var(--ink); font-size:20px; font-weight:700;
+    cursor:pointer; box-shadow:0 6px 16px rgba(44,43,52,.18);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .locateBtn:hover{ background:#fff; }
 
   .topbar{ position:absolute; top:16px; left:14px; right:14px; z-index:25;
     display:flex; justify-content:space-between; align-items:center; }
@@ -262,6 +272,7 @@
   <div class="phone">
     <div class="screen">
       <div id="map"></div>
+      <button class="locateBtn" id="locateBtn" onclick="focusOnMe()" title="定位到我">◎</button>
 
       <div class="topbar">
         <button class="chip" onclick="openMe()">
@@ -353,6 +364,8 @@ const PALETTE = [
 ];
 const ME_COLOR = { ring: "#ff6f61", tint: "#ffe1dc" };
 const COLLAPSED = 220;
+const MAP_FOCUS_ZOOM = 16;
+const SHEET_OFFSET_PX = 150;
 
 const state = {
   me: null,
@@ -509,9 +522,40 @@ async function bootApp(session) {
   updateMeChip();
   initMap();
   initSheetDrag();
+  await loadMyLastLocation();
   startGeolocation();
   await loadFriendsAndRequests();
   subscribeRealtime();
+}
+
+async function loadMyLastLocation() {
+  const { data } = await sb.from("locations").select("lat,lng").eq("user_id", state.me.id).maybeSingle();
+  if (data) updateSelfMarker(data.lat, data.lng, { focus: state.myLat == null });
+}
+
+function focusMapOn(lat, lng, zoom) {
+  if (!state.map || lat == null || lng == null) return;
+  const z = zoom != null ? zoom : (state.map.getZoom() < 14 ? MAP_FOCUS_ZOOM : state.map.getZoom());
+  const pt = state.map.project(L.latLng(lat, lng), z);
+  pt.y += SHEET_OFFSET_PX;
+  state.map.flyTo(state.map.unproject(pt, z), z, { animate: true, duration: 0.65 });
+}
+
+function focusOnMe() {
+  if (state.myLat == null || state.myLng == null) {
+    showToast("正在获取你的位置…请允许定位权限");
+    return;
+  }
+  focusMapOn(state.myLat, state.myLng);
+}
+
+function focusOnFriend(id) {
+  const f = state.friends.find((x) => x.id === id);
+  if (!f || !f.loc) {
+    showToast("好友暂无定位");
+    return;
+  }
+  focusMapOn(f.loc.lat, f.loc.lng);
 }
 
 function initMap() {
@@ -520,11 +564,12 @@ function initMap() {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap",
   }).addTo(state.map);
-  setTimeout(() => state.map && state.map.invalidateSize(), 200);
+  setTimeout(() => state.map && state.map.invalidateSize(), 300);
+  setTimeout(() => state.map && state.map.invalidateSize(), 900);
 }
 function bubbleIcon({ initial, emoji, ring, tint, isMe }) {
   return L.divIcon({
-    className: "",
+    className: "leaflet-marker-bubble",
     html:
       '<div class="mapBubble' + (isMe ? " mapBubbleMe" : "") + '">' +
         (isMe ? '<span class="meRing"></span>' : "") +
@@ -537,7 +582,8 @@ function bubbleIcon({ initial, emoji, ring, tint, isMe }) {
     iconAnchor: [23, 66],
   });
 }
-function updateSelfMarker(lat, lng) {
+function updateSelfMarker(lat, lng, opts) {
+  opts = opts || {};
   const first = (state.me.display_name || state.me.username || "我").slice(0, 1);
   const icon = bubbleIcon({ initial: first, emoji: state.me.status_emoji, ring: ME_COLOR.ring, tint: ME_COLOR.tint, isMe: true });
   const firstFix = state.myLat == null;
@@ -549,7 +595,7 @@ function updateSelfMarker(lat, lng) {
     state.selfMarker.setLatLng([lat, lng]);
     state.selfMarker.setIcon(icon);
   }
-  if (firstFix) state.map.setView([lat, lng], 15);
+  if (opts.focus || firstFix) focusMapOn(lat, lng);
   renderSheetList();
   if (state.selectedId === "me") renderDetailCard();
 }
@@ -568,6 +614,7 @@ function renderFriendMarkers() {
         state.selectedId = f.id;
         collapseSheet();
         renderDetailCard();
+        focusMapOn(f.loc.lat, f.loc.lng);
       });
     }
   }
@@ -768,12 +815,14 @@ function selectFriend(id) {
   state.selectedId = id;
   expandSheet();
   renderDetailCard();
+  focusOnFriend(id);
 }
 
 function openMe() {
   state.selectedId = "me";
   collapseSheet();
   renderDetailCard();
+  focusOnMe();
 }
 function closeCard() {
   state.selectedId = null;
