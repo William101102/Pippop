@@ -550,14 +550,19 @@ async function bootApp(session) {
   handleInviteLink();
 }
 
-function inviteUrl() {
+function inviteUrl(username) {
   const base = location.origin + location.pathname;
-  return base + "?add=" + encodeURIComponent(state.me.username);
+  return base + "?add=" + encodeURIComponent(username || state.me.username);
 }
 
 function inviteText() {
   const name = state.me.display_name || state.me.username;
   return "加我 Pinpop 好友 @" + state.me.username + "（" + name + "）\n" + inviteUrl();
+}
+
+function friendShareText(f) {
+  const name = f.display_name || f.username;
+  return "推荐你在 Pinpop 上加我的好友 @" + f.username + "（" + name + "）\n" + inviteUrl(f.username);
 }
 
 async function copyText(text, okMsg) {
@@ -588,6 +593,22 @@ async function shareInvite() {
     }
   }
   copyText(text, "邀请链接已复制，发给朋友吧！");
+}
+
+async function shareFriend(friendId) {
+  const f = state.friends.find((x) => x.id === friendId);
+  if (!f) return;
+  const url = inviteUrl(f.username);
+  const text = friendShareText(f);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Pinpop 推荐好友", text: text, url: url });
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+    }
+  }
+  copyText(text, "已复制，发给其他好友吧！");
 }
 
 function handleInviteLink() {
@@ -922,7 +943,6 @@ function renderDetailCard() {
       '<div class="statRow"><div class="stat"><div class="statValue">' + esc(m.status_emoji) + " " + esc(m.status_text) + '</div><div class="statLabel">状态</div></div>' +
       '<span class="statDivider"></span><div class="stat"><div class="statValue">' + esc(m.username) + '</div><div class="statLabel">你的 ID</div></div></div>' +
       '<div class="cardActions"><button class="pill pillGhost" onclick="openAdd()">👥 加好友</button>' +
-      '<button class="pill pillGhost" onclick="shareInvite()">🔗 分享</button>' +
       '<button class="pill pillSolid" onclick="cycleStatus()">✏️ 换状态</button></div>' +
       '<button class="signOutLink" onclick="signOut()">退出登录</button>' +
       '<div class="lockNote">🔒 只有好友能看到你的位置</div>';
@@ -941,7 +961,9 @@ function renderDetailCard() {
       '<div class="statRow"><div class="stat"><div class="statValue">' + dist + '</div><div class="statLabel">距你</div></div>' +
       '<span class="statDivider"></span><div class="stat"><div class="statValue">' + seen + '</div><div class="statLabel">更新</div></div></div>' +
       '<div class="cardActions"><button class="pill pillGhost" onclick="openChat(\'' + f.id + '\')">💬 聊天</button>' +
-      '<button class="pill pillSolid" onclick="wave(\'' + f.id + '\')">👋 打招呼</button></div>';
+      '<button class="pill pillGhost" onclick="shareFriend(\'' + f.id + '\')">🔗 分享</button>' +
+      '<button class="pill pillSolid" onclick="wave(\'' + f.id + '\')">👋 打招呼</button></div>' +
+      '<div class="lockNote">🔒 只有好友能看到位置</div>';
   }
 }
 async function cycleStatus() {
