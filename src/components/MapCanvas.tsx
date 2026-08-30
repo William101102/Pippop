@@ -14,12 +14,6 @@ interface Props {
   focus?: { lat: number; lng: number } | null;
 }
 
-const PLACE_STYLE: Record<string, { icon: string; color: string }> = {
-  overnight: { icon: '🌙', color: '#25c9b7' },
-  home: { icon: '🏠', color: '#ff6f61' },
-  work: { icon: '💼', color: '#8b7cf6' },
-};
-
 export function MapCanvas({ me, friends, myLocation, places = [], onSelectFriend, onSelectMe, focus }: Props) {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -56,15 +50,14 @@ export function MapCanvas({ me, friends, myLocation, places = [], onSelectFriend
     });
   }, [me, friends, myLocation, onSelectFriend, onSelectMe]);
 
-  // Private significant places (overnight spots / home / work).
+  // Private overnight places, visible only to the signed-in user.
   useEffect(() => {
     if (!layersRef.current) return;
     const group = layersRef.current;
     places.forEach((p) => {
-      const style = PLACE_STYLE[p.kind] || PLACE_STYLE.overnight;
       const icon = L.divIcon({
         className: 'place-pin-shell',
-        html: `<div class="place-pin" style="--place:${style.color}"><span>${style.icon}</span><b>${esc(p.label)}</b></div>`,
+        html: `<div class="place-pin" style="--place:#25c9b7"><span>🌙</span><b>${esc(`${p.score} 晚`)}</b></div>`,
         iconSize: [34, 34],
         iconAnchor: [17, 17],
       });

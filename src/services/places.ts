@@ -33,6 +33,7 @@ export async function loadSignificantPlaces(userId: string): Promise<Significant
     .from('significant_places')
     .select('*')
     .eq('user_id', userId)
+    .eq('kind', 'overnight')
     .order('score', { ascending: false });
   if (error) throw error;
   return (data || []) as SignificantPlace[];
@@ -57,7 +58,7 @@ export async function upsertSignificantPlaces(userId: string, places: Significan
   if (error) throw error;
 }
 
-export async function deleteSignificantPlaces(userId: string, kinds: SignificantPlace['kind'][]) {
-  const { error } = await supabase.from('significant_places').delete().eq('user_id', userId).in('kind', kinds);
+export async function deleteSignificantPlaces(userId: string) {
+  const { error } = await supabase.from('significant_places').delete().eq('user_id', userId);
   if (error) throw error;
 }
