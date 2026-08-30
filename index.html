@@ -181,7 +181,15 @@
   .sendBtn:hover{ background:var(--coral-deep); }
 
   .myIdCard{ display:flex; justify-content:space-between; align-items:center; background:rgba(255,111,97,.07);
-    border:1.5px dashed rgba(255,111,97,.4); border-radius:18px; padding:12px 16px; margin-bottom:14px; }
+    border:1.5px dashed rgba(255,111,97,.4); border-radius:18px; padding:12px 16px; margin-bottom:14px;
+    width:100%; cursor:pointer; text-align:left; font-family:inherit; }
+  .myIdCard:hover{ background:rgba(255,111,97,.12); }
+  .shareActions{ display:flex; gap:8px; margin-bottom:14px; }
+  .shareBtn{ flex:1; border:none; border-radius:14px; padding:11px; font-weight:800; font-size:13.5px; cursor:pointer; }
+  .shareBtnPrimary{ background:var(--coral); color:#fff; }
+  .shareBtnPrimary:hover{ background:var(--coral-deep); }
+  .shareBtnGhost{ background:var(--muted); color:var(--ink); }
+  .shareBtnGhost:hover{ background:#e7e8e3; }
   .myIdLabel{ font-size:11.5px; color:var(--ink-soft); }
   .myIdValue{ font-weight:700; font-family:'Fredoka'; font-size:17px; }
   .searchBar{ display:flex; align-items:center; gap:8px; background:var(--muted); border-radius:16px; padding:11px 14px; }
@@ -245,7 +253,7 @@
     </div>
 
     <div class="authError" id="authError"></div>
-    <div class="authHint">首次注册后 Supabase 默认要求邮箱确认才能登录，如果只是自测，可以去 Supabase 后台 Authentication → Providers → Email 里关掉 "Confirm email"。</div>
+    <div class="authHint">新用户请先在「注册」创建账号；已有账号再用「登录」。</div>
   </div>
 </div>
 
@@ -318,12 +326,16 @@
           <div class="overlayTitle">添加好友</div>
         </div>
         <div style="padding:14px 16px; flex:1; overflow-y:auto;">
-          <div class="myIdCard">
+          <button type="button" class="myIdCard" onclick="shareInvite()">
             <div>
               <div class="myIdLabel">你的 ID</div>
               <div class="myIdValue" id="myIdText">@me</div>
             </div>
             <span style="font-size:12px;color:var(--coral);font-weight:700;">分享给朋友 →</span>
+          </button>
+          <div class="shareActions">
+            <button type="button" class="shareBtn shareBtnGhost" onclick="copyMyId()">复制 ID</button>
+            <button type="button" class="shareBtn shareBtnPrimary" onclick="shareInvite()">分享邀请链接</button>
           </div>
           <div class="searchBar">
             <span style="font-size:16px;">🔍</span>
@@ -455,8 +467,21 @@ async function doSignIn() {
   if (!email || !password) { setAuthError("请填写邮箱和密码"); return; }
   setAuthBusy(true);
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    setAuthBusy(false);
+    setAuthError(error.message === "Invalid login credentials" ? "邮箱或密码不对，没有账号请先注册" : error.message);
+    return;
+  }
+  const { data: prof } = await sb.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  if (!prof) {
+    await sb.auth.signOut();
+    setAuthBusy(false);
+    switchTab("signup");
+    $("#suEmail").value = email;
+    setAuthError("这个邮箱还没注册，请先在「注册」里创建账号");
+    return;
+  }
   setAuthBusy(false);
-  if (error) { setAuthError(error.message === "Invalid login credentials" ? "邮箱或密码不对" : error.message); return; }
   await bootApp(data.session);
 }
 async function doSignUp() {
@@ -469,11 +494,15 @@ async function doSignUp() {
   if (!/^[a-z0-9_]{3,20}$/.test(username)) { setAuthError("ID 只能用小写字母、数字、下划线，3-20 位"); return; }
   if (password.length < 6) { setAuthError("密码至少 6 位"); return; }
   setAuthBusy(true);
+  const { data: taken } = await sb.from("profiles").select("id").eq("username", username).maybeSingle();
+  if (taken) { setAuthBusy(false); setAuthError("这个 ID 已经被占用了，换一个试试"); return; }
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) { setAuthBusy(false); setAuthError(error.message); return; }
   if (!data.session) {
     setAuthBusy(false);
     setAuthError("注册成功！请去邮箱点确认链接后再登录（或在 Supabase 后台关掉邮箱确认方便测试）。");
+    switchTab("signin");
+    $("#siEmail").value = email;
     return;
   }
   const color = colorFor(username);
@@ -482,9 +511,11 @@ async function doSignUp() {
   });
   setAuthBusy(false);
   if (profErr) {
+    await sb.auth.signOut();
     setAuthError(profErr.code === "23505" ? "这个 ID 已经被占用了，换一个试试" : profErr.message);
     return;
   }
+  showToast("注册成功，欢迎加入 Pinpop 🎉");
   await bootApp(data.session);
 }
 async function doCompleteProfile() {
@@ -526,6 +557,69 @@ async function bootApp(session) {
   startGeolocation();
   await loadFriendsAndRequests();
   subscribeRealtime();
+  handleInviteLink();
+}
+
+function inviteUrl() {
+  const base = location.origin + location.pathname;
+  return base + "?add=" + encodeURIComponent(state.me.username);
+}
+
+function inviteText() {
+  const name = state.me.display_name || state.me.username;
+  return "加我 Pinpop 好友 @" + state.me.username + "（" + name + "）\n" + inviteUrl();
+}
+
+async function copyText(text, okMsg) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(okMsg);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    showToast(okMsg);
+  }
+}
+
+function copyMyId() {
+  if (!state.me) return;
+  copyText("@" + state.me.username, "已复制你的 ID：@" + state.me.username);
+}
+
+async function shareInvite() {
+  if (!state.me) return;
+  const url = inviteUrl();
+  const text = inviteText();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Pinpop 好友邀请", text: text, url: url });
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+    }
+  }
+  copyText(text, "邀请链接已复制，发给朋友吧！");
+}
+
+function handleInviteLink() {
+  const add = new URLSearchParams(location.search).get("add");
+  if (!add || !state.me) return;
+  const username = add.replace(/^@/, "").trim().toLowerCase();
+  if (!username || username === state.me.username) {
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  openAdd();
+  $("#searchInput").value = username;
+  state.searchQuery = username;
+  runSearch().then(() => {
+    if (username !== state.me.username) showToast("朋友分享来的邀请，点「＋ 添加」加好友");
+  });
+  history.replaceState({}, "", location.pathname);
 }
 
 async function loadMyLastLocation() {
@@ -843,6 +937,7 @@ function renderDetailCard() {
       '<div class="statRow"><div class="stat"><div class="statValue">' + esc(m.status_emoji) + " " + esc(m.status_text) + '</div><div class="statLabel">状态</div></div>' +
       '<span class="statDivider"></span><div class="stat"><div class="statValue">' + esc(m.username) + '</div><div class="statLabel">你的 ID</div></div></div>' +
       '<div class="cardActions"><button class="pill pillGhost" onclick="openAdd()">👥 加好友</button>' +
+      '<button class="pill pillGhost" onclick="shareInvite()">🔗 分享</button>' +
       '<button class="pill pillSolid" onclick="cycleStatus()">✏️ 换状态</button></div>' +
       '<button class="signOutLink" onclick="signOut()">退出登录</button>' +
       '<div class="lockNote">🔒 只有好友能看到你的位置</div>';
@@ -977,9 +1072,18 @@ function renderSearchResults() {
 }
 
 switchTab("signin");
-sb.auth.getSession().then(({ data }) => {
-  if (data.session) bootApp(data.session);
+sb.auth.getSession().then(async ({ data }) => {
+  if (!data.session) return;
+  const { data: prof } = await sb.from("profiles").select("id").eq("id", data.session.user.id).maybeSingle();
+  if (!prof) {
+    $("#authView").style.display = "none";
+    $("#completeView").style.display = "flex";
+    return;
+  }
+  bootApp(data.session);
 });
+document.getElementById("siPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") doSignIn(); });
+document.getElementById("suPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") doSignUp(); });
 document.getElementById("chatInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendMsg();
 });
