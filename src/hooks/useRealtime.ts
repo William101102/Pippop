@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import type { MapReaction, Message, PlaceEvent } from '../types';
+import type { Highlight, MapReaction, Message, PlaceEvent } from '../types';
 
 export function useRealtime(opts: {
   meId?: string;
@@ -9,8 +9,9 @@ export function useRealtime(opts: {
   onMessage: (msg: Message) => void;
   onReaction: (reaction: MapReaction) => void;
   onPlaceEvent: (event: PlaceEvent) => void;
+  onHighlight?: (highlight: Highlight) => void;
 }) {
-  const { meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent } = opts;
+  const { meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent, onHighlight } = opts;
 
   useEffect(() => {
     if (!meId) return;
@@ -38,9 +39,14 @@ export function useRealtime(opts: {
         if (event.user_id === meId) return;
         onPlaceEvent(event);
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'highlights' }, (payload) => {
+        const highlight = payload.new as Highlight;
+        if (highlight.user_id === meId) return;
+        onHighlight?.(highlight);
+      })
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent]);
+  }, [meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent, onHighlight]);
 }

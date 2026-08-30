@@ -11,7 +11,10 @@ import { CheckInPanel } from './components/CheckInPanel';
 import { CompleteProfileScreen } from './components/CompleteProfileScreen';
 import { FootprintsPanel } from './components/FootprintsPanel';
 import { FriendRail } from './components/FriendRail';
+import { HighlightsRail } from './components/HighlightsRail';
+import { HighlightViewer } from './components/HighlightViewer';
 import { NearbyPanel } from './components/NearbyPanel';
+import { PostHighlightSheet } from './components/PostHighlightSheet';
 import { NotificationsPanel, type UnreadPreview } from './components/NotificationsPanel';
 import { PersonCard } from './components/PersonCard';
 import { RequestsInbox } from './components/RequestsInbox';
@@ -31,6 +34,9 @@ import {
   loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend,
 } from './services/social';
 import { fetchFriendLocation, loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
+import {
+  deleteHighlight, loadFriendHighlights, postHighlight, uploadHighlightPhoto,
+} from './services/highlights';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
 import {
@@ -38,8 +44,8 @@ import {
   setFriendGhostMode, setGhostMode as persistGhostMode, updateStatus,
 } from './services/profiles';
 import type {
-  Friend, FriendRequest, GhostMode, HeatCell, LiveLocation, MapReaction, Message, NearbyPlace,
-  Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility,
+  Friend, FriendRequest, GhostMode, HeatCell, Highlight, LiveLocation, MapReaction, Message,
+  NearbyPlace, Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility,
 } from './types';
 import { demoFriends, demoLocation, demoMe } from './dev/demo';
 import { useBattery } from './hooks/useBattery';
@@ -199,6 +205,10 @@ function App() {
   const [heatCells, setHeatCells] = useState<HeatCell[]>([]);
   const [myReactions, setMyReactions] = useState<MapReaction[]>([]);
   const [placeEvents, setPlaceEvents] = useState<PlaceEvent[]>([]);
+  const [highlights, setHighlights] = useState<Record<string, Highlight[]>>({});
+  const [highlightViewerId, setHighlightViewerId] = useState<string | null>(null);
+  const [postingHighlight, setPostingHighlight] = useState(false);
+  const [highlightBusy, setHighlightBusy] = useState(false);
   const isBottomSheet = useBottomSheetLayout();
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
@@ -276,6 +286,13 @@ function App() {
     setPlaceEvents(current => [event, ...current].slice(0, 40));
   }, []);
 
+  const handleHighlight = useCallback((highlight: Highlight) => {
+    setHighlights(current => ({
+      ...current,
+      [highlight.user_id]: [highlight, ...(current[highlight.user_id] || [])],
+    }));
+  }, []);
+
   useRealtime({
     meId: liveId,
     onFriendsChange: () => {
@@ -285,6 +302,7 @@ function App() {
     onMessage: handleIncomingMessage,
     onReaction: handleReaction,
     onPlaceEvent: handlePlaceEvent,
+    onHighlight: handleHighlight,
   });
 
   // Blurred friends never appear on the locations realtime channel (RLS hides
@@ -391,6 +409,7 @@ function App() {
         getGhostMode(user.user.id).then(setGhostMode).catch(() => undefined);
         getFriendGhostModes(user.user.id).then(setFriendModes).catch(() => undefined);
         loadMyVisits(user.user.id).then(setMyVisits).catch(() => undefined);
+        loadFriendHighlights().then(setHighlights).catch(() => undefined);
       }
       setProfileLoaded(true);
     })();
@@ -528,6 +547,7 @@ function App() {
       refreshUnread();
       loadMyReactions(meId).then(setMyReactions).catch(() => undefined);
       loadPlaceEvents().then(setPlaceEvents).catch(() => undefined);
+      loadFriendHighlights().then(setHighlights).catch(() => undefined);
       clearPushBadge();
     };
     refresh();
@@ -901,6 +921,50 @@ function App() {
     return {};
   }
 
+  async function submitHighlight(input: { body: string; file: File | null }) {
+    if (!profile) return { error: '登录状态已失效' };
+    if (preview || !isUserUuid(profile.id)) {
+      setPostingHighlight(false);
+      notify('预览模式：动态发布好啦 ✨');
+      return {};
+    }
+    setHighlightBusy(true);
+    try {
+      const mediaUrl = input.file ? await uploadHighlightPhoto(profile.id, input.file) : null;
+      await postHighlight(profile.id, input.body, mediaUrl);
+      setHighlights(current => ({
+        ...current,
+        [profile.id]: [
+          { id: `local-${Date.now()}`, user_id: profile.id, body: input.body.trim(), media_url: mediaUrl, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86_400_000).toISOString() },
+          ...(current[profile.id] || []),
+        ],
+      }));
+      setPostingHighlight(false);
+      notify('动态已发布，24 小时内朋友都能看到 ✨');
+      loadFriendHighlights().then(setHighlights).catch(() => undefined);
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '发布失败，请稍后再试' };
+    } finally {
+      setHighlightBusy(false);
+    }
+  }
+
+  async function removeHighlight(id: string) {
+    if (!profile) return;
+    setHighlights(current => ({
+      ...current,
+      [profile.id]: (current[profile.id] || []).filter(h => h.id !== id),
+    }));
+    if (id.startsWith('local-')) return;
+    try {
+      await deleteHighlight(id);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '删除失败，请稍后再试');
+      loadFriendHighlights().then(setHighlights).catch(() => undefined);
+    }
+  }
+
   const filtered = useMemo(
     () => friends.filter(f => `${f.display_name} ${f.username}`.toLowerCase().includes(search.toLowerCase())),
     [friends, search],
@@ -923,6 +987,12 @@ function App() {
   );
 
   const notificationCount = requests.length + totalUnread + myReactions.length;
+
+  const highlightAuthor = useMemo<Profile | Friend | null>(() => {
+    if (!highlightViewerId) return null;
+    if (highlightViewerId === profile?.id) return profile;
+    return friends.find(f => f.id === highlightViewerId) ?? null;
+  }, [highlightViewerId, profile, friends]);
 
   const nearest = useMemo(() => {
     if (!location) return null;
@@ -1090,6 +1160,20 @@ function App() {
         <CheckInPanel location={location} onClose={() => setCheckInOpen(false)} onSubmit={submitCheckIn} />
       )}
 
+      {postingHighlight && (
+        <PostHighlightSheet onClose={() => setPostingHighlight(false)} onSubmit={submitHighlight} />
+      )}
+
+      {highlightViewerId && highlightAuthor && (highlights[highlightViewerId]?.length ?? 0) > 0 && (
+        <HighlightViewer
+          author={highlightAuthor}
+          isMine={highlightViewerId === profile.id}
+          highlights={highlights[highlightViewerId] || []}
+          onClose={() => setHighlightViewerId(null)}
+          onDelete={removeHighlight}
+        />
+      )}
+
       {panel && panel !== 'add' && copy && (
         <aside className={`sheet ${sheetDrag.sheetProps.className}`} style={sheetDrag.sheetProps.style}>
           <div className="grabber-hit" {...sheetDrag.handleProps}><div className="grabber" /></div>
@@ -1103,6 +1187,14 @@ function App() {
 
           {panel === 'friends' && (
             <>
+              <HighlightsRail
+                me={profile}
+                friends={friends}
+                highlights={highlights}
+                busy={highlightBusy}
+                onAddMine={() => setPostingHighlight(true)}
+                onOpen={setHighlightViewerId}
+              />
               <RequestsInbox requests={requests} busyIds={requestBusy} onRespond={respondToRequest} />
               <FriendRail
                 me={profile}

@@ -129,3 +129,14 @@ export interface PlaceEvent {
   lng?: number | null;
   created_at: string;
 }
+
+/** A 24h-expiring photo post, à la Zenly/Snap "highlights". RLS only ever
+ *  hands back your own and your friends' still-live ones. */
+export interface Highlight {
+  id: string;
+  user_id: string;
+  body: string;
+  media_url?: string | null;
+  created_at: string;
+  expires_at: string;
+}

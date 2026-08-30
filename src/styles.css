@@ -662,6 +662,42 @@ button { color: inherit; }
 .rail-badge { position: absolute; top: -2px; right: -2px; display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border: 2px solid #fff; border-radius: 9px; color: #fff; background: var(--pink); font-size: 9px; font-style: normal; font-weight: 900; }
 .rail-add .rail-avatar { width: 50px; height: 50px; border: 2px dashed #d8d0e0; border-radius: 18px; color: var(--muted); }
 
+/* Highlights (24h "stories" rail) */
+.highlights-rail { display: flex; gap: 12px; margin: 0 -16px 12px; padding: 4px 16px 8px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.highlights-rail::-webkit-scrollbar { display: none; }
+.highlight-item { display: grid; flex: 0 0 auto; justify-items: center; gap: 5px; width: 62px; padding: 0; border: 0; background: none; cursor: pointer; scroll-snap-align: start; }
+.highlight-ring { position: relative; display: grid; place-items: center; width: 54px; height: 54px; padding: 3px; border-radius: 50%; }
+.highlight-ring.live { background: linear-gradient(135deg, #ff7b42, #ff3e86, #5b35f2); }
+.highlight-ring.empty { border: 2px dashed #d8d0e0; }
+.highlight-ring .avatar-photo { width: 100%; height: 100%; border-radius: 50%; border-width: 3px; }
+.highlight-ring .avatar-photo > span, .highlight-ring .avatar-photo > img { border-radius: 50%; }
+.highlight-add { position: absolute; right: -2px; bottom: -2px; display: grid; place-items: center; width: 20px; height: 20px; border: 2px solid #fff; border-radius: 50%; color: #fff; background: linear-gradient(135deg, var(--coral), var(--pink)); box-shadow: 0 2px 6px rgba(41,25,72,.2); font-style: normal; }
+.highlight-item small { max-width: 62px; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+
+/* Highlight composer */
+.highlight-photo-picker { display: grid; place-items: center; gap: 6px; width: 100%; height: 170px; border: 1.5px dashed #d8d0e0; border-radius: 20px; color: var(--muted); background: #faf8fc; cursor: pointer; font-size: 11px; font-weight: 800; overflow: hidden; }
+.highlight-photo-picker img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Full-screen highlight viewer */
+.highlight-viewer-backdrop { position: fixed; inset: 0; z-index: 900; display: grid; place-items: center; background: rgba(20,14,32,.86); backdrop-filter: blur(6px); animation: toast-in .18s ease; }
+.highlight-viewer { position: relative; display: flex; flex-direction: column; width: min(420px, 94vw); height: min(760px, 88vh); overflow: hidden; border-radius: 26px; background: #14101d; box-shadow: 0 30px 90px rgba(0,0,0,.5); }
+.highlight-progress { display: flex; gap: 4px; padding: 10px 12px 0; }
+.highlight-progress i { flex: 1; height: 3px; border-radius: 3px; background: rgba(255,255,255,.28); font-style: normal; }
+.highlight-progress i.done, .highlight-progress i.active { background: #fff; }
+.highlight-viewer-head { display: flex; align-items: center; gap: 9px; padding: 12px; color: #fff; }
+.highlight-viewer-head .avatar-photo { width: 34px; height: 34px; border-color: rgba(255,255,255,.5); }
+.highlight-viewer-head b { display: block; font-size: 13px; }
+.highlight-viewer-head small { color: rgba(255,255,255,.6); font-size: 10px; }
+.highlight-viewer-head > div { flex: 1; min-width: 0; }
+.highlight-delete, .highlight-close { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; color: #fff; background: rgba(255,255,255,.14); cursor: pointer; }
+.highlight-media { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; background: #1d1729; }
+.highlight-media img { width: 100%; height: 100%; object-fit: cover; }
+.highlight-media-fallback { padding: 40px; color: #fff; font: 700 24px/1.4 'Fredoka'; text-align: center; }
+.highlight-tap-zone { position: absolute; top: 0; bottom: 0; width: 34%; border: 0; background: none; cursor: pointer; }
+.highlight-tap-zone.left { left: 0; }
+.highlight-tap-zone.right { right: 0; }
+.highlight-caption { margin: 0; padding: 12px 16px 16px; color: #fff; font-size: 13px; line-height: 1.5; }
+
 /* Share card call-to-action */
 .share-card-button { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 8px; padding: 13px 15px; border: 1.5px dashed rgba(91,53,242,.32); border-radius: 18px; color: var(--violet); background: rgba(91,53,242,.07); cursor: pointer; text-align: left; transition: background .15s ease; }
 .share-card-button:hover { background: rgba(91,53,242,.12); }

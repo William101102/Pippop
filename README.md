@@ -18,6 +18,8 @@ people who do not have the app yet.
 - **Gray ring** — they hid it, or have not updated in a while.
 - **Zoom out** — overlapping people collapse into a circle with a count. Tap it
   to zoom back in.
+- **Highlights** — post a photo (or just a line of text) from the 朋友 tab;
+  friends see it in a Zenly/Snap-style story rail for 24 hours, then it's gone.
 
 ## Run it locally
 

@@ -297,6 +297,10 @@ create index if not exists map_reactions_target_idx
 create index if not exists place_events_user_time_idx
   on public.place_events (user_id, created_at desc);
 create index if not exists push_tokens_user_idx on public.push_tokens (user_id);
+create index if not exists highlights_user_time_idx
+  on public.highlights (user_id, created_at desc);
+create index if not exists highlights_expires_idx
+  on public.highlights (expires_at);
 
 -- ----------------------------------------------------------------------------
 -- Privacy helpers. Defined before the policies below because those reference
