@@ -4,6 +4,8 @@ A Zenly-style friend location map — one HTML file + [Supabase](https://supabas
 
 **Live demo:** https://william101102.github.io/zenly-app/
 
+> **第一次访问是 404？** 按 [`SETUP.md`](./SETUP.md) 开通 GitHub Pages（2 分钟，需要你在 GitHub 网页上点一下）。
+
 **Custom domain (when you buy it):** https://pinpop.app
 
 ## What it does
