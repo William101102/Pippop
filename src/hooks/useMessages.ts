@@ -35,9 +35,14 @@ export function useMessages(meId: string | undefined) {
   }, [meId, reloadThread]);
 
   const pushIncoming = useCallback((msg: Message) => {
-    const otherId = msg.sender_id;
-    setThreads((prev) => ({ ...prev, [otherId]: [...(prev[otherId] || []), msg] }));
-  }, []);
+    if (!meId) return;
+    const friendId = msg.sender_id === meId ? msg.recipient_id : msg.sender_id;
+    setThreads((prev) => {
+      const existing = prev[friendId] || [];
+      if (existing.some((m) => m.id === msg.id)) return prev;
+      return { ...prev, [friendId]: [...existing, msg] };
+    });
+  }, [meId]);
 
   return { threads, chatWith, openChat, closeChat, reloadThread, send, wave, pushIncoming };
 }

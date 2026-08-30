@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
+import { ChatPanel } from './components/ChatPanel';
 import { CompleteProfileScreen } from './components/CompleteProfileScreen';
 import { SHEET_OFFSET_PX } from './lib/constants';
 import { isConfigured, supabase } from './lib/supabase';
@@ -13,7 +14,9 @@ import { loadFriendsBundle, sendFriendRequest } from './services/friends';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
 import { uploadProfileAvatar } from './services/profile';
 import { completeProfile, searchProfiles } from './services/profiles';
-import type { Friend, GhostMode, LiveLocation, Panel, Profile } from './types';
+import type { Friend, GhostMode, LiveLocation, Message, Panel, Profile } from './types';
+import { useMessages } from './hooks/useMessages';
+import { useRealtime } from './hooks/useRealtime';
 import { useSignificantPlaces } from './hooks/useSignificantPlaces';
 
 const WORLD_CENTER: [number, number] = [20, 0];
@@ -112,12 +115,25 @@ function App() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapTileError, setMapTileError] = useState<string | null>(null);
+  const [quickDraft, setQuickDraft] = useState('');
   const mapEl = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layers = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const didAutoFocus = useRef(false);
   const { places, recordFix } = useSignificantPlaces(profile?.id, signedIn && Boolean(profile));
+  const { threads, chatWith, openChat, closeChat, send, wave, pushIncoming } = useMessages(profile?.id);
+
+  const handleFriendLocation = useCallback((userId: string, row: Record<string, unknown> | null) => {
+    if (!row) return;
+    setFriends(prev => prev.map(f => (
+      f.id === userId ? { ...f, location: row as unknown as LiveLocation } : f
+    )));
+  }, []);
+
+  const handleIncomingMessage = useCallback((msg: Message) => {
+    pushIncoming(msg);
+  }, [pushIncoming]);
 
   // Feed own fixes into private significant-place history (overnight/home/work).
   useEffect(() => {
@@ -135,6 +151,15 @@ function App() {
     setFriends(bundle.friends);
     setSentIds(bundle.sentIds);
   }, []);
+
+  useRealtime({
+    meId: profile?.id,
+    onFriendsChange: () => {
+      if (profile?.id) reloadFriends(profile.id).catch(() => undefined);
+    },
+    onFriendLocation: handleFriendLocation,
+    onMessage: handleIncomingMessage,
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSignedIn(Boolean(data.session)); setSessionReady(true); });
@@ -358,6 +383,10 @@ function App() {
   );
 
   const friendIds = useMemo(() => new Set(friends.map(f => f.id)), [friends]);
+  const chatFriend = useMemo(
+    () => (chatWith ? friends.find(f => f.id === chatWith) ?? null : null),
+    [chatWith, friends],
+  );
 
   if (!sessionReady) {
     return <div className="splash"><div className="brand brand-large"><span>pin</span>pop<i>●</i></div></div>;
@@ -529,7 +558,28 @@ function App() {
           )}
 
           {panel === 'messages' && (
-            <p className="muted empty-hint">消息功能正在开发中</p>
+            <div className="friend-list">
+              {friends.length === 0 && (
+                <div className="empty-state">
+                  <p className="muted empty-hint">添加朋友后即可开始聊天</p>
+                  <button className="primary compact" type="button" onClick={() => setPanel('add')}>添加朋友</button>
+                </div>
+              )}
+              {friends.map(f => {
+                const thread = threads[f.id] || [];
+                const last = thread[thread.length - 1];
+                return (
+                  <button className="friend-row" key={f.id} type="button" onClick={() => openChat(f.id)}>
+                    <Avatar profile={f} showStatus />
+                    <div>
+                      <b>{f.display_name}</b>
+                      <small>{last ? last.body : '开始聊天…'}</small>
+                    </div>
+                    {last && <span className="friend-meta">{ago(last.created_at)}</span>}
+                  </button>
+                );
+              })}
+            </div>
           )}
 
           {panel === 'settings' && (
@@ -560,15 +610,43 @@ function App() {
             {selected.battery_level != null && <small>{selected.battery_level}% 电量</small>}
           </div>
           <div className="person-actions">
-            <button type="button" disabled><SmilePlus /><span>打招呼</span></button>
-            <button type="button" disabled><Sparkles /><span>What&apos;s Up</span></button>
-            <button type="button" disabled><MessageCircle /><span>聊天</span></button>
+            <button type="button" onClick={async () => { await wave(selected.id); notify(`已向 ${selected.display_name} 挥手 👋`); }}><SmilePlus /><span>打招呼</span></button>
+            <button type="button" onClick={() => notify('What\'s Up 功能正在开发中')}><Sparkles /><span>What&apos;s Up</span></button>
+            <button type="button" onClick={() => { openChat(selected.id); setSelected(null); }}><MessageCircle /><span>聊天</span></button>
           </div>
           <div className="quick-message">
-            <input placeholder={`给 ${selected.display_name} 发消息…`} disabled />
-            <button type="button" disabled><Send size={18} /></button>
+            <input
+              placeholder={`给 ${selected.display_name} 发消息…`}
+              value={quickDraft}
+              onChange={e => setQuickDraft(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key !== 'Enter' || !quickDraft.trim()) return;
+                const result = await send(selected.id, quickDraft);
+                if (result.error) notify(result.error);
+                else { setQuickDraft(''); openChat(selected.id); setSelected(null); }
+              }}
+            />
+            <button
+              type="button"
+              onClick={async () => {
+                if (!quickDraft.trim()) return;
+                const result = await send(selected.id, quickDraft);
+                if (result.error) notify(result.error);
+                else { setQuickDraft(''); openChat(selected.id); setSelected(null); }
+              }}
+            ><Send size={18} /></button>
           </div>
         </section>
+      )}
+
+      {chatFriend && profile && (
+        <ChatPanel
+          friend={chatFriend}
+          messages={threads[chatFriend.id] || []}
+          meId={profile.id}
+          onClose={closeChat}
+          onSend={(text) => send(chatFriend.id, text)}
+        />
       )}
 
       {toast && <div className="toast">{toast}</div>}
