@@ -207,7 +207,7 @@ function App() {
     }
   }, []);
 
-  // Feed own fixes into private significant-place history (overnight/home/work).
+  // Feed own fixes into private overnight-place history.
   useEffect(() => {
     if (!location || !profile) return;
     recordFix(location.lat, location.lng, location.updated_at).catch(() => undefined);
@@ -380,17 +380,11 @@ function App() {
       const marker = L.marker([l.lat, l.lng], { icon, zIndexOffset: mine ? 1000 : 0 }).addTo(layers.current!);
       if (!mine) marker.on('click', () => { const f = friends.find(x => x.id === p.id); if (f) setSelected(f); });
     });
-    // Private significant places (overnight spots / home / work).
-    const PLACE_STYLE: Record<string, { icon: string; color: string }> = {
-      overnight: { icon: '🌙', color: '#25c9b7' },
-      home: { icon: '🏠', color: '#ff6f61' },
-      work: { icon: '💼', color: '#8b7cf6' },
-    };
+    // Private overnight places, visible only to the signed-in user.
     places.forEach(p => {
-      const style = PLACE_STYLE[p.kind] || PLACE_STYLE.overnight;
       const icon = L.divIcon({
         className: 'place-pin-shell',
-        html: `<div class="place-pin" style="--place:${style.color}"><span>${style.icon}</span><b>${safeHtml(p.label)}</b></div>`,
+        html: `<div class="place-pin" style="--place:#25c9b7"><span>🌙</span><b>${safeHtml(`${p.score} 晚`)}</b></div>`,
         iconSize: [34, 34],
         iconAnchor: [17, 17],
       });
@@ -847,13 +841,13 @@ function App() {
                     >
                       <span
                         className="avatar"
-                        style={{ background: p.kind === 'home' ? '#ff6f61' : p.kind === 'work' ? '#8b7cf6' : '#25c9b7' }}
+                        style={{ background: '#25c9b7' }}
                       >
-                        {p.kind === 'home' ? '🏠' : p.kind === 'work' ? '💼' : '🌙'}
+                        🌙
                       </span>
                       <div>
                         <b>{p.label}</b>
-                        <small>{p.kind === 'work' ? `累计 ${Math.round(p.score / 60)} 小时` : `${p.score} 晚`}</small>
+                        <small>{p.score} 晚</small>
                       </div>
                     </button>
                   ))}
@@ -862,7 +856,7 @@ function App() {
 
               <div className="privacy-note">
                 <Ghost size={19} />
-                <div><b>足迹默认仅你可见</b><small>过夜地点 / Home / Work 仅保存在你自己的账号下</small></div>
+                <div><b>过夜地点仅你可见</b><small>晚数和位置只保存在你自己的账号下</small></div>
               </div>
 
               <button className="danger-button" type="button" onClick={() => supabase.auth.signOut()}>

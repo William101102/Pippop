@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  detectSignificantPlaces,
-  placesToPersist,
+  detectOvernightPlaces,
   type SignificantPlace,
 } from '../lib/places';
 import {
@@ -14,8 +13,8 @@ import {
 
 /**
  * Records throttled location fixes into location_history and periodically
- * re-runs overnight / home / work detection. All data is private to the
- * signed-in user (enforced by RLS in 202608300003_significant_places.sql).
+ * re-runs overnight-place detection. All data is private to the signed-in
+ * user (enforced by RLS in 202608300006_significant_places.sql).
  */
 export function useSignificantPlaces(userId: string | undefined, enabled: boolean) {
   const [places, setPlaces] = useState<SignificantPlace[]>([]);
@@ -40,9 +39,9 @@ export function useSignificantPlaces(userId: string | undefined, enabled: boolea
       lastDetectRef.current = Date.now();
       try {
         const points = await loadLocationHistory(userId);
-        const detected = detectSignificantPlaces(points);
-        await deleteSignificantPlaces(userId, ['overnight', 'home', 'work']);
-        await upsertSignificantPlaces(userId, placesToPersist(detected));
+        const overnightPlaces = detectOvernightPlaces(points);
+        await deleteSignificantPlaces(userId);
+        await upsertSignificantPlaces(userId, overnightPlaces);
         setPlaces(await loadSignificantPlaces(userId));
       } catch {
         // detection is best-effort

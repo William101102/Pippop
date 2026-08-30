@@ -4,8 +4,6 @@ import { haversineKm } from "./geo";
  * Significant-place detection, pure functions so they are unit-testable.
  *
  * Overnight spot: staying >= 5 h within the local window 00:01–11:00.
- * Home: an overnight spot with >= 10 nights, ranked in the top 2 by nights.
- * Work: outside the overnight window, the place with the most time stayed.
  *
  * All "stays" are derived from observed location fixes; when the app is
  * closed no points exist, so a stay is only credited for the observed span.
@@ -17,9 +15,6 @@ const CELL_DEG = 0.0005;
 const CLUSTER_RADIUS_M = 80;
 /** Minimum minutes inside the overnight window to count as an overnight stay. */
 export const OVERNIGHT_MIN_MINUTES = 5 * 60;
-/** Distinct nights required before an overnight spot can become home. */
-export const HOME_MIN_NIGHTS = 10;
-export const HOME_MAX_COUNT = 2;
 /** Overnight window in local hours: 00:01 – 11:00. */
 export const OVERNIGHT_START_MIN = 1; // 00:01
 export const OVERNIGHT_END_MIN = 11 * 60; // 11:00
@@ -30,7 +25,7 @@ export interface VisitPoint {
   recorded_at: string; // ISO
 }
 
-export type PlaceKind = "overnight" | "home" | "work";
+export type PlaceKind = "overnight";
 
 export interface SignificantPlace {
   id?: string;
@@ -38,7 +33,7 @@ export interface SignificantPlace {
   lat: number;
   lng: number;
   label: string;
-  /** overnight: nights count; work: total minutes. */
+  /** Number of distinct nights observed at this place. */
   score: number;
   first_seen_at?: string;
   last_seen_at?: string;
@@ -142,11 +137,15 @@ function avg(xs: number[]) {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-/** Merge stays that share a grid cell, summing minutes / unioning days. */
+function placeCellKey(lat: number, lng: number) {
+  return `${Math.round(lat / CELL_DEG)}:${Math.round(lng / CELL_DEG)}`;
+}
+
+/** Merge qualifying overnight stays that share a grid cell. */
 function mergeStays(stays: Stay[]) {
   const map = new Map<string, Stay & { daySet: Set<string> }>();
   for (const s of stays) {
-    const key = `${Math.round(s.lat / CELL_DEG)}:${Math.round(s.lng / CELL_DEG)}`;
+    const key = placeCellKey(s.lat, s.lng);
     const prev = map.get(key);
     if (prev) {
       prev.minutes += s.minutes;
@@ -155,8 +154,7 @@ function mergeStays(stays: Stay[]) {
       map.set(key, { ...s, daySet: new Set(s.days) });
     }
   }
-  return Array.from(map.entries()).map(([key, s]) => ({
-    key,
+  return Array.from(map.values()).map((s) => ({
     lat: s.lat,
     lng: s.lng,
     minutes: s.minutes,
@@ -165,18 +163,11 @@ function mergeStays(stays: Stay[]) {
   }));
 }
 
-export interface DetectedPlaces {
-  overnightSpots: SignificantPlace[];
-  home: SignificantPlace[];
-  work: SignificantPlace | null;
-}
-
-export function detectSignificantPlaces(points: VisitPoint[]): DetectedPlaces {
-  const merged = mergeStays(extractStays(points));
-
-  // ---- Overnight spots -------------------------------------------------
-  const overnight = merged
-    .filter((s) => s.overnight)
+export function detectOvernightPlaces(points: VisitPoint[]): SignificantPlace[] {
+  const stays = extractStays(points).filter(
+    (stay) => stay.overnight && stay.minutes >= OVERNIGHT_MIN_MINUTES,
+  );
+  return mergeStays(stays)
     .map((s) => ({
       kind: "overnight" as const,
       lat: s.lat,
@@ -186,37 +177,4 @@ export function detectSignificantPlaces(points: VisitPoint[]): DetectedPlaces {
     }))
     .filter((p) => p.score > 0)
     .sort((a, b) => b.score - a.score);
-
-  // ---- Home: >= HOME_MIN_NIGHTS nights, top HOME_MAX_COUNT ------------
-  const home = overnight
-    .filter((p) => p.score >= HOME_MIN_NIGHTS)
-    .slice(0, HOME_MAX_COUNT)
-    .map((p) => ({ ...p, label: "Home" }));
-
-  // ---- Work: most time outside the overnight window -------------------
-  const workStay = merged
-    .filter((s) => !s.overnight && s.minutes > 0)
-    .sort((a, b) => b.minutes - a.minutes)[0];
-  const work: SignificantPlace | null = workStay
-    ? {
-        kind: "work",
-        lat: workStay.lat,
-        lng: workStay.lng,
-        label: "Work",
-        score: Math.round(workStay.minutes),
-      }
-    : null;
-
-  return { overnightSpots: overnight, home, work };
-}
-
-/** Places to persist: all overnight spots plus home/work upgrades. */
-export function placesToPersist(detected: DetectedPlaces): SignificantPlace[] {
-  const homeKeys = new Set(detected.home.map((p) => `${p.lat},${p.lng}`));
-  const overnight = detected.overnightSpots.filter(
-    (p) => !homeKeys.has(`${p.lat},${p.lng}`),
-  );
-  const out: SignificantPlace[] = [...overnight, ...detected.home];
-  if (detected.work) out.push(detected.work);
-  return out;
 }

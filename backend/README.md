@@ -12,6 +12,8 @@ Run files in `supabase/migrations` in timestamp order through the Supabase SQL e
 3. `202608300003_auth_profile_bootstrap.sql` — auto-create profiles on signup (replaces any existing `on_auth_user_created` trigger)
 4. `202608300004_ghost_mode_locations.sql` — server-side ghost mode (dev only until verified)
 5. `202608300005_friendships_pair_unique.sql` — optional; review duplicates first
+6. `202608300006_significant_places.sql` — private location history and significant places
+7. `202608300007_overnight_places_only.sql` — remove Home/Work rows and retain overnight counts only
 
 Or from the repo root after `npx supabase login`:
 
