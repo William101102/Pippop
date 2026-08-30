@@ -32,8 +32,15 @@ jobs:
         run: npm run build
         env:
           GITHUB_ACTIONS: true
+          PAGES_CUSTOM_DOMAIN: ${{ vars.PAGES_CUSTOM_DOMAIN }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+
+      # GitHub serves a custom domain only if the published artifact carries a
+      # CNAME file, so the domain survives every redeploy.
+      - name: Add CNAME for custom domain
+        if: vars.PAGES_CUSTOM_DOMAIN != ''
+        run: echo "${{ vars.PAGES_CUSTOM_DOMAIN }}" > dist/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
