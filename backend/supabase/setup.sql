@@ -60,6 +60,27 @@ create table if not exists public.friendships (
   check (requester_id <> addressee_id)
 );
 
+alter table public.friendships add column if not exists created_at timestamptz not null default now();
+
+-- Two people who added each other at the same time produced two rows for one
+-- relationship, which blocks the unique index below. Collapse each pair to a
+-- single row, keeping the most meaningful status: accepted > pending > declined.
+with ranked as (
+  select
+    id,
+    row_number() over (
+      partition by least(requester_id, addressee_id), greatest(requester_id, addressee_id)
+      order by
+        case status when 'accepted' then 0 when 'pending' then 1 else 2 end,
+        created_at,
+        id
+    ) as rn
+  from public.friendships
+)
+delete from public.friendships f
+using ranked r
+where f.id = r.id and r.rn > 1;
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references public.profiles(id) on delete cascade,
@@ -528,4 +549,10 @@ union all select 'realtime on messages',
        case when exists (select 1 from pg_publication_tables
          where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages')
        then 'ok' else 'MISSING' end
+union all select 'friendships deduplicated',
+       case when exists (
+         select 1 from public.friendships
+         group by least(requester_id, addressee_id), greatest(requester_id, addressee_id)
+         having count(*) > 1)
+       then 'DUPLICATES REMAIN' else 'ok' end
 order by item;

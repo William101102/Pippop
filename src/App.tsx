@@ -706,9 +706,14 @@ function App() {
           onClose={() => { setInviteQuery(''); setPanel('friends'); }}
           onSearch={(q) => { searchProfiles(profile.id, q).then(setAddResults).catch(() => undefined); }}
           onSendRequest={async (id) => {
-            await sendFriendRequest(profile.id, id);
+            const outcome = await sendFriendRequest(profile.id, id);
+            if (outcome === 'accepted') {
+              await reloadFriends(profile.id);
+              notify('对方之前也加过你，现在你们是好友啦 🎉');
+              return;
+            }
             setSentIds(prev => new Set(prev).add(id));
-            notify('好友请求已发送');
+            notify(outcome === 'already_friends' ? '你们已经是好友了' : '好友请求已发送');
           }}
           onNotify={notify}
         />
