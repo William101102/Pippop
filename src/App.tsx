@@ -13,8 +13,11 @@ import { FootprintsPanel } from './components/FootprintsPanel';
 import { FriendRail } from './components/FriendRail';
 import { HighlightsRail } from './components/HighlightsRail';
 import { HighlightViewer } from './components/HighlightViewer';
+import { GroupChatPanel } from './components/GroupChatPanel';
 import { NearbyPanel } from './components/NearbyPanel';
+import { NewGroupSheet } from './components/NewGroupSheet';
 import { PostHighlightSheet } from './components/PostHighlightSheet';
+import { ZonesSection } from './components/ZonesSection';
 import { NotificationsPanel, type UnreadPreview } from './components/NotificationsPanel';
 import { PersonCard } from './components/PersonCard';
 import { RequestsInbox } from './components/RequestsInbox';
@@ -23,7 +26,7 @@ import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
 import { fmtDist, fmtSpeed } from './lib/format';
 import { clusterByPixels } from './lib/cluster';
 import { friendShareText, haversineKm, inviteText, inviteUrl, shareText, usernameFromInviteUrl } from './lib/geo';
-import { createGeofenceTracker } from './lib/geofence';
+import { createGeofenceTracker, createZoneGeofenceTracker } from './lib/geofence';
 import { createFixGate, getCurrentFix, watchLocation } from './lib/location';
 import { dismissSplash, getLaunchUrl, haptic, isNative, onAppResume, onAppUrlOpen, openAppSettings } from './lib/native';
 import { clearPushBadge, registerPush, unregisterPush } from './lib/push';
@@ -37,15 +40,17 @@ import { fetchFriendLocation, loadFriendsBundle, respondFriendRequest, sendFrien
 import {
   deleteHighlight, loadFriendHighlights, postHighlight, uploadHighlightPhoto,
 } from './services/highlights';
+import { createGroup, loadGroupThread, loadMyGroups, sendGroupMessage } from './services/groups';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
+import { createZone, deleteZone, loadVisibleZones } from './services/zones';
 import { uploadProfileAvatar } from './services/profile';
 import {
   completeProfile, deleteMyAccount, getFriendGhostModes, getGhostMode, searchProfiles,
   setFriendGhostMode, setGhostMode as persistGhostMode, updateStatus,
 } from './services/profiles';
 import type {
-  Friend, FriendRequest, GhostMode, HeatCell, Highlight, LiveLocation, MapReaction, Message,
-  NearbyPlace, Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility,
+  ChatGroup, Friend, FriendRequest, GhostMode, HeatCell, Highlight, LiveLocation, MapReaction, Message,
+  NearbyPlace, Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility, Zone,
 } from './types';
 import { demoFriends, demoLocation, demoMe } from './dev/demo';
 import { useBattery } from './hooks/useBattery';
@@ -209,6 +214,11 @@ function App() {
   const [highlightViewerId, setHighlightViewerId] = useState<string | null>(null);
   const [postingHighlight, setPostingHighlight] = useState(false);
   const [highlightBusy, setHighlightBusy] = useState(false);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [groups, setGroups] = useState<ChatGroup[]>([]);
+  const [groupThreads, setGroupThreads] = useState<Record<string, Message[]>>({});
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const isBottomSheet = useBottomSheetLayout();
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
@@ -221,6 +231,7 @@ function App() {
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const didAutoFocus = useRef(false);
   const geofence = useRef(createGeofenceTracker());
+  const zoneGeofence = useRef(createZoneGeofenceTracker());
   const locationRef = useRef<LiveLocation | null>(null);
   locationRef.current = location;
   const previewRef = useRef(preview);
@@ -293,6 +304,17 @@ function App() {
     }));
   }, []);
 
+  const handleGroupMessage = useCallback((msg: Message) => {
+    const groupId = msg.group_id;
+    if (!groupId) return;
+    setGroupThreads(current => {
+      const existing = current[groupId];
+      if (!existing) return current; // thread not opened yet — it'll load fresh when opened
+      if (existing.some(m => m.id === msg.id)) return current;
+      return { ...current, [groupId]: [...existing, msg] };
+    });
+  }, []);
+
   useRealtime({
     meId: liveId,
     onFriendsChange: () => {
@@ -303,6 +325,7 @@ function App() {
     onReaction: handleReaction,
     onPlaceEvent: handlePlaceEvent,
     onHighlight: handleHighlight,
+    onGroupMessage: handleGroupMessage,
   });
 
   // Blurred friends never appear on the locations realtime channel (RLS hides
@@ -352,6 +375,24 @@ function App() {
       transition.place.lng,
     ).catch(() => undefined);
   }, [location, profile, places, ghostMode]);
+
+  // Same idea for Zenlands, except only your own zones can trigger a notice
+  // from your own device — a friend's zone is visible so its name resolves
+  // in the feed, but only its owner's phone runs the geofence for it.
+  const myZones = useMemo(() => zones.filter(z => z.owner_id === profile?.id), [zones, profile?.id]);
+  useEffect(() => {
+    if (preview || !location || !profile || myZones.length === 0) return;
+    if (ghostMode === 'frozen') return;
+    const transition = zoneGeofence.current.update(location.lat, location.lng, myZones);
+    if (!transition) return;
+    recordPlaceEvent(
+      profile.id,
+      transition.kind,
+      transition.zone.label,
+      transition.zone.lat,
+      transition.zone.lng,
+    ).catch(() => undefined);
+  }, [location, profile, myZones, ghostMode]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSignedIn(Boolean(data.session)); setSessionReady(true); });
@@ -410,6 +451,8 @@ function App() {
         getFriendGhostModes(user.user.id).then(setFriendModes).catch(() => undefined);
         loadMyVisits(user.user.id).then(setMyVisits).catch(() => undefined);
         loadFriendHighlights().then(setHighlights).catch(() => undefined);
+        loadVisibleZones().then(setZones).catch(() => undefined);
+        loadMyGroups().then(setGroups).catch(() => undefined);
       }
       setProfileLoaded(true);
     })();
@@ -548,6 +591,8 @@ function App() {
       loadMyReactions(meId).then(setMyReactions).catch(() => undefined);
       loadPlaceEvents().then(setPlaceEvents).catch(() => undefined);
       loadFriendHighlights().then(setHighlights).catch(() => undefined);
+      loadVisibleZones().then(setZones).catch(() => undefined);
+      loadMyGroups().then(setGroups).catch(() => undefined);
       clearPushBadge();
     };
     refresh();
@@ -653,7 +698,17 @@ function App() {
       });
       L.marker([p.lat, p.lng], { icon, interactive: false, zIndexOffset: -400 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, profile?.avatar_url, places, nearbyPlaces, mapReady, mapZoom, freshReaction, openFriend, ghostMode, pinAvatarVersion]);
+    // Zenlands you created — friend-visible, unlike the overnight places above.
+    myZones.forEach(z => {
+      const icon = L.divIcon({
+        className: 'place-pin-shell',
+        html: `<div class="place-pin zone" style="--place:#ff3e86"><span>${safeHtml(z.emoji)}</span><b>${safeHtml(z.label)}</b></div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+      L.marker([z.lat, z.lng], { icon, interactive: false, zIndexOffset: -450 }).addTo(layers.current!);
+    });
+  }, [friends, location, profile, profile?.avatar_url, places, nearbyPlaces, myZones, mapReady, mapZoom, freshReaction, openFriend, ghostMode, pinAvatarVersion]);
 
   // Plain circles rather than a heatmap plugin: with history bucketed into grid
   // cells server side, one translucent circle per cell already reads as heat and
@@ -965,6 +1020,93 @@ function App() {
     }
   }
 
+  async function submitZone(label: string, emoji: string, lat: number, lng: number) {
+    if (!profile) return { error: '登录状态已失效' };
+    if (preview || !isUserUuid(profile.id)) {
+      notify('预览模式：地标创建好啦 ✨');
+      return {};
+    }
+    try {
+      const zone = await createZone(profile.id, label, emoji, lat, lng);
+      setZones(current => [zone, ...current]);
+      notify(`「${zone.label}」创建成功，好友能看到啦`);
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '创建失败，请稍后再试' };
+    }
+  }
+
+  async function removeZone(id: string) {
+    const previous = zones;
+    setZones(current => current.filter(z => z.id !== id));
+    if (preview) return;
+    try {
+      await deleteZone(id);
+    } catch (error) {
+      setZones(previous);
+      notify(error instanceof Error ? error.message : '删除失败，请稍后再试');
+    }
+  }
+
+  async function submitCreateGroup(input: { name: string; memberIds: string[] }) {
+    if (!profile) return { error: '登录状态已失效' };
+    if (preview || !isUserUuid(profile.id)) {
+      notify('预览模式：群聊创建好啦 ✨');
+      setCreatingGroup(false);
+      return {};
+    }
+    try {
+      const group = await createGroup(profile.id, input.name, input.memberIds);
+      const members = friends.filter(f => input.memberIds.includes(f.id));
+      const full: ChatGroup = {
+        ...group,
+        members: [profile, ...members],
+      };
+      setGroups(current => [full, ...current]);
+      setCreatingGroup(false);
+      setOpenGroupId(group.id);
+      setGroupThreads(current => ({ ...current, [group.id]: [] }));
+      notify(`「${group.name}」建好啦`);
+      return {};
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '创建失败，请稍后再试' };
+    }
+  }
+
+  async function openGroupChat(groupId: string) {
+    setOpenGroupId(groupId);
+    if (groupThreads[groupId]) return;
+    try {
+      const thread = await loadGroupThread(groupId);
+      setGroupThreads(current => ({ ...current, [groupId]: thread }));
+    } catch {
+      setGroupThreads(current => ({ ...current, [groupId]: [] }));
+    }
+  }
+
+  async function sendGroupChatMessage(groupId: string, text: string) {
+    if (!profile) return { error: '登录状态已失效' };
+    if (preview || !isUserUuid(profile.id)) {
+      const optimistic: Message = {
+        id: `local-${Date.now()}`,
+        sender_id: profile.id,
+        recipient_id: null,
+        group_id: groupId,
+        body: text,
+        kind: 'text',
+        created_at: new Date().toISOString(),
+      } as Message;
+      setGroupThreads(current => ({ ...current, [groupId]: [...(current[groupId] || []), optimistic] }));
+      return {};
+    }
+    const result = await sendGroupMessage(profile.id, groupId, text);
+    if (!result.error) {
+      const thread = await loadGroupThread(groupId).catch(() => null);
+      if (thread) setGroupThreads(current => ({ ...current, [groupId]: thread }));
+    }
+    return result;
+  }
+
   const filtered = useMemo(
     () => friends.filter(f => `${f.display_name} ${f.username}`.toLowerCase().includes(search.toLowerCase())),
     [friends, search],
@@ -1174,6 +1316,24 @@ function App() {
         />
       )}
 
+      {creatingGroup && (
+        <NewGroupSheet friends={friends} onClose={() => setCreatingGroup(false)} onSubmit={submitCreateGroup} />
+      )}
+
+      {openGroupId && (() => {
+        const group = groups.find(g => g.id === openGroupId);
+        if (!group) return null;
+        return (
+          <GroupChatPanel
+            group={group}
+            messages={groupThreads[openGroupId] || []}
+            meId={profile.id}
+            onClose={() => setOpenGroupId(null)}
+            onSend={(text) => sendGroupChatMessage(openGroupId, text)}
+          />
+        );
+      })()}
+
       {panel && panel !== 'add' && copy && (
         <aside className={`sheet ${sheetDrag.sheetProps.className}`} style={sheetDrag.sheetProps.style}>
           <div className="grabber-hit" {...sheetDrag.handleProps}><div className="grabber" /></div>
@@ -1335,6 +1495,14 @@ function App() {
                 onFocusPlace={focusMapOn}
               />
 
+              <ZonesSection
+                myZones={myZones}
+                location={location}
+                onCreate={submitZone}
+                onDelete={removeZone}
+                onFocus={focusMapOn}
+              />
+
               <div className="eyebrow">过夜地点</div>
               {places.length === 0 ? (
                 <p className="muted empty-hint">还没有足迹数据，开着 App 时会自动记录你的常去地点。</p>
@@ -1381,6 +1549,35 @@ function App() {
                   <button className="primary compact" type="button" onClick={() => setPanel('add')}>添加朋友</button>
                 </div>
               )}
+
+              <div className="eyebrow">群聊</div>
+              <button
+                className="friend-row group-pick-row"
+                type="button"
+                onClick={() => setCreatingGroup(true)}
+                disabled={friends.length < 2}
+              >
+                <span className="avatar" style={{ background: '#7b6cf6' }}><Users size={18} /></span>
+                <div><b>新建群聊</b><small>{friends.length < 2 ? '至少要有 2 位朋友' : '拉上朋友一起聊'}</small></div>
+              </button>
+              {groups.map(g => {
+                const thread = groupThreads[g.id];
+                const last = thread?.[thread.length - 1];
+                return (
+                  <button className="friend-row" key={g.id} type="button" onClick={() => openGroupChat(g.id)}>
+                    <div className="group-avatars">
+                      {g.members.slice(0, 3).map(m => <Avatar key={m.id} profile={m} className="group-avatar-stack" />)}
+                    </div>
+                    <div>
+                      <b>{g.name}</b>
+                      <small>{last ? last.body : `${g.members.length} 位成员`}</small>
+                    </div>
+                    {last && <small>{ago(last.created_at)}</small>}
+                  </button>
+                );
+              })}
+
+              <div className="eyebrow">好友</div>
               {friends.map(f => {
                 const thread = threads[f.id] || [];
                 const last = thread[thread.length - 1];

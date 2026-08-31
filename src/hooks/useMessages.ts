@@ -83,7 +83,7 @@ export function useMessages(meId: string | undefined) {
   }, [meId, reloadThread]);
 
   const pushIncoming = useCallback((msg: Message) => {
-    if (!meId) return;
+    if (!meId || msg.group_id || !msg.recipient_id) return;
     if (msg.sender_id !== meId && msg.recipient_id !== meId) return;
     const friendId = msg.sender_id === meId ? msg.recipient_id : msg.sender_id;
     setThreads((prev) => {

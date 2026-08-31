@@ -10,8 +10,11 @@ export function useRealtime(opts: {
   onReaction: (reaction: MapReaction) => void;
   onPlaceEvent: (event: PlaceEvent) => void;
   onHighlight?: (highlight: Highlight) => void;
+  onGroupMessage?: (msg: Message) => void;
 }) {
-  const { meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent, onHighlight } = opts;
+  const {
+    meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent, onHighlight, onGroupMessage,
+  } = opts;
 
   useEffect(() => {
     if (!meId) return;
@@ -26,7 +29,13 @@ export function useRealtime(opts: {
         onFriendsChange();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        onMessage(payload.new as Message);
+        const msg = payload.new as Message;
+        if (msg.group_id) {
+          if (msg.sender_id === meId) return;
+          onGroupMessage?.(msg);
+          return;
+        }
+        onMessage(msg);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'map_reactions' }, (payload) => {
         const reaction = payload.new as MapReaction;
@@ -48,5 +57,7 @@ export function useRealtime(opts: {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent, onHighlight]);
+  }, [
+    meId, onFriendsChange, onFriendLocation, onMessage, onReaction, onPlaceEvent, onHighlight, onGroupMessage,
+  ]);
 }

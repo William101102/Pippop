@@ -1,5 +1,6 @@
 import { metresBetween } from './location';
 import type { SignificantPlace } from './places';
+import type { Zone } from '../types';
 
 /** Inside this counts as "at" a place. Roughly a building plus its forecourt. */
 const ARRIVE_RADIUS_M = 120;
@@ -49,6 +50,51 @@ export function createGeofenceTracker() {
       if (!nearest || nearest.distance > ARRIVE_RADIUS_M) return null;
       insideId = keyOf(nearest.place);
       return { kind: 'arrive', place: nearest.place };
+    },
+  };
+}
+
+export interface ZoneTransition {
+  kind: 'arrive' | 'leave';
+  zone: Zone;
+}
+
+/** Leaving needs a bit more distance than the zone's own radius, same
+ *  hysteresis idea as the significant-place tracker above. */
+const ZONE_LEAVE_PADDING_M = 60;
+
+/**
+ * Tracks which "Zenland" (a friend-visible, user-named zone) the device is
+ * currently inside. Unlike significant places, zones carry their own radius
+ * and are meant to be shared — the label just has to be resolved locally
+ * because arrive/leave detection always runs on the mover's own device.
+ */
+export function createZoneGeofenceTracker() {
+  let insideId: string | null = null;
+
+  return {
+    update(lat: number, lng: number, zones: Zone[]): ZoneTransition | null {
+      if (insideId) {
+        const current = zones.find((zone) => zone.id === insideId);
+        if (!current) {
+          insideId = null;
+          return null;
+        }
+        const distance = metresBetween(current.lat, current.lng, lat, lng);
+        if (distance > current.radius_m + ZONE_LEAVE_PADDING_M) {
+          insideId = null;
+          return { kind: 'leave', zone: current };
+        }
+        return null;
+      }
+
+      const nearest = zones
+        .map((zone) => ({ zone, distance: metresBetween(zone.lat, zone.lng, lat, lng) }))
+        .sort((a, b) => a.distance - b.distance)[0];
+
+      if (!nearest || nearest.distance > nearest.zone.radius_m) return null;
+      insideId = nearest.zone.id;
+      return { kind: 'arrive', zone: nearest.zone };
     },
   };
 }

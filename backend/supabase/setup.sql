@@ -225,6 +225,20 @@ create table if not exists public.whats_up_requests (
   check (sender_id <> recipient_id)
 );
 
+-- "Zenlands": friend-visible, hand-named zones (unlike the private,
+-- auto-detected significant_places above). Arrive/leave detection always
+-- runs on the owner's own device; friends just need to read the label.
+create table if not exists public.zones (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  label text not null check (char_length(trim(label)) between 1 and 24),
+  emoji text not null default '📍',
+  lat double precision not null,
+  lng double precision not null,
+  radius_m int not null default 120 check (radius_m between 30 and 500),
+  created_at timestamptz not null default now()
+);
+
 -- ----------------------------------------------------------------------------
 -- Social layer
 -- ----------------------------------------------------------------------------
@@ -266,6 +280,31 @@ create table if not exists public.place_events (
   created_at timestamptz not null default now()
 );
 
+-- Group chat. A message either belongs to a 1:1 pair (recipient_id set,
+-- group_id null) or a group (group_id set, recipient_id null) — see the
+-- messages_recipient_or_group check added below.
+create table if not exists public.chat_groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(trim(name)) between 1 and 40),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.chat_group_members (
+  group_id uuid not null references public.chat_groups(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  joined_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+
+alter table public.messages add column if not exists group_id uuid references public.chat_groups(id) on delete cascade;
+-- A group message has no single recipient.
+alter table public.messages alter column recipient_id drop not null;
+alter table public.messages drop constraint if exists messages_recipient_or_group;
+alter table public.messages add constraint messages_recipient_or_group check (
+  (group_id is null and recipient_id is not null) or (group_id is not null and recipient_id is null)
+);
+
 -- One row per device. Tokens rotate, so the token itself is the identity.
 create table if not exists public.push_tokens (
   token text primary key,
@@ -301,6 +340,11 @@ create index if not exists highlights_user_time_idx
   on public.highlights (user_id, created_at desc);
 create index if not exists highlights_expires_idx
   on public.highlights (expires_at);
+create index if not exists zones_owner_idx on public.zones (owner_id);
+create index if not exists chat_group_members_user_idx
+  on public.chat_group_members (user_id);
+create index if not exists messages_group_time_idx
+  on public.messages (group_id, created_at) where group_id is not null;
 
 -- ----------------------------------------------------------------------------
 -- Privacy helpers. Defined before the policies below because those reference
@@ -363,6 +407,16 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- security definer so this can be called from inside chat_group_members' own
+-- RLS (and messages') without recursing into chat_group_members' policies.
+create or replace function public.is_group_member(p_group uuid, p_user uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.chat_group_members m
+    where m.group_id = p_group and m.user_id = p_user
+  );
+$$;
+
 -- ----------------------------------------------------------------------------
 -- Row level security
 -- ----------------------------------------------------------------------------
@@ -382,6 +436,9 @@ alter table public.map_reactions enable row level security;
 alter table public.best_friends enable row level security;
 alter table public.place_events enable row level security;
 alter table public.push_tokens enable row level security;
+alter table public.zones enable row level security;
+alter table public.chat_groups enable row level security;
+alter table public.chat_group_members enable row level security;
 
 -- Profiles: every signed-in user can search others; you may only edit your own.
 drop policy if exists "authenticated read profiles" on public.profiles;
@@ -437,21 +494,34 @@ drop policy if exists "remove own friendship" on public.friendships;
 create policy "remove own friendship" on public.friendships for delete
   using (auth.uid() in (requester_id, addressee_id));
 
--- Messages.
+-- Messages. A row is either a 1:1 message (recipient_id set) or a group
+-- message (group_id set) — the check constraint on the table guarantees
+-- exactly one, so each policy below just adds the alternate branch.
 drop policy if exists "read own conversations" on public.messages;
 create policy "read own conversations" on public.messages for select
-  using (auth.uid() in (sender_id, recipient_id));
+  using (
+    auth.uid() in (sender_id, recipient_id)
+    or (group_id is not null and public.is_group_member(group_id, auth.uid()))
+  );
 
 drop policy if exists "send message to friend" on public.messages;
 create policy "send message to friend" on public.messages for insert
   with check (
     auth.uid() = sender_id
-    and sender_id <> recipient_id
-    and exists (
-      select 1 from public.friendships f
-      where f.status = 'accepted'
-        and ((f.requester_id = auth.uid() and f.addressee_id = recipient_id)
-          or (f.addressee_id = auth.uid() and f.requester_id = recipient_id))
+    and (
+      (
+        group_id is null and sender_id <> recipient_id
+        and exists (
+          select 1 from public.friendships f
+          where f.status = 'accepted'
+            and ((f.requester_id = auth.uid() and f.addressee_id = recipient_id)
+              or (f.addressee_id = auth.uid() and f.requester_id = recipient_id))
+        )
+      )
+      or (
+        group_id is not null and recipient_id is null
+        and public.is_group_member(group_id, auth.uid())
+      )
     )
   );
 
@@ -471,6 +541,48 @@ create policy "manage own location history" on public.location_history for all
 drop policy if exists "manage own significant places" on public.significant_places;
 create policy "manage own significant places" on public.significant_places for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Zenlands: you manage your own; friends can only read the label/location so
+-- an arrive/leave notice makes sense to them.
+drop policy if exists "manage own zones" on public.zones;
+create policy "manage own zones" on public.zones for all
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+drop policy if exists "friends read zones" on public.zones;
+create policy "friends read zones" on public.zones for select
+  using (auth.uid() = owner_id or public.shares_location_with(owner_id, auth.uid()));
+
+-- Group chat: only the creator can make a group or add its first members;
+-- membership itself is otherwise read-only from the client for v1 (no
+-- leave/add-later flow yet).
+drop policy if exists "read my groups" on public.chat_groups;
+create policy "read my groups" on public.chat_groups for select
+  using (public.is_group_member(id, auth.uid()));
+
+drop policy if exists "create own group" on public.chat_groups;
+create policy "create own group" on public.chat_groups for insert
+  with check (auth.uid() = owner_id);
+
+drop policy if exists "delete own group" on public.chat_groups;
+create policy "delete own group" on public.chat_groups for delete
+  using (auth.uid() = owner_id);
+
+drop policy if exists "read fellow group members" on public.chat_group_members;
+create policy "read fellow group members" on public.chat_group_members for select
+  using (public.is_group_member(group_id, auth.uid()));
+
+-- Only the group's owner can seat members (including themself) — a plain
+-- "or user_id = auth.uid()" branch here would let a stranger self-join any
+-- group whose id they can guess, so it's deliberately not offered.
+drop policy if exists "owner adds group members" on public.chat_group_members;
+create policy "owner adds group members" on public.chat_group_members for insert
+  with check (
+    exists (select 1 from public.chat_groups g where g.id = group_id and g.owner_id = auth.uid())
+  );
+
+drop policy if exists "leave own group membership" on public.chat_group_members;
+create policy "leave own group membership" on public.chat_group_members for delete
+  using (auth.uid() = user_id);
 
 -- Places: readable by any signed-in user, writable only as your own check-in.
 drop policy if exists "authenticated read places" on public.places;
@@ -811,9 +923,26 @@ create or replace function public.push_on_message()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
   sender_name text;
+  group_name text;
+  member_id uuid;
 begin
   select coalesce(nullif(display_name, ''), '@' || username)
     into sender_name from public.profiles where id = new.sender_id;
+
+  if new.group_id is not null then
+    select name into group_name from public.chat_groups where id = new.group_id;
+    for member_id in
+      select user_id from public.chat_group_members
+      where group_id = new.group_id and user_id <> new.sender_id
+    loop
+      perform public.notify_push(
+        member_id,
+        coalesce(sender_name, '朋友') || ' · ' || coalesce(group_name, '群聊'),
+        left(coalesce(new.body, ''), 120)
+      );
+    end loop;
+    return new;
+  end if;
 
   perform public.notify_push(
     new.recipient_id,
@@ -971,6 +1100,12 @@ do $$ begin alter publication supabase_realtime add table public.whats_up_reques
 exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table public.visits;
 exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.zones;
+exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.chat_groups;
+exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.chat_group_members;
+exception when duplicate_object then null; end $$;
 
 -- ----------------------------------------------------------------------------
 -- Result: one row per thing the app needs. Everything should read "ok".
@@ -1026,6 +1161,19 @@ union all select 'places insert policy',
        case when exists (select 1 from pg_policies
          where schemaname = 'public' and tablename = 'places' and policyname = 'create user place')
        then 'ok' else 'MISSING' end
+union all select 'zones table',
+       case when to_regclass('public.zones') is not null then 'ok' else 'MISSING' end
+union all select 'chat_groups table',
+       case when to_regclass('public.chat_groups') is not null then 'ok' else 'MISSING' end
+union all select 'chat_group_members table',
+       case when to_regclass('public.chat_group_members') is not null then 'ok' else 'MISSING' end
+union all select 'messages.group_id column',
+       case when exists (select 1 from information_schema.columns
+         where table_schema = 'public' and table_name = 'messages' and column_name = 'group_id')
+       then 'ok' else 'MISSING' end
+union all select 'is_group_member()',
+       case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = 'is_group_member') then 'ok' else 'MISSING' end
 union all select 'realtime on messages',
        case when exists (select 1 from pg_publication_tables
          where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages')

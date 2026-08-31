@@ -42,11 +42,13 @@ export type MessageKind = 'text' | 'emoji' | 'wave' | 'image' | 'location' | 'wh
 export interface Message {
   id: string;
   sender_id: string;
-  recipient_id: string;
+  /** Null for a group message — `group_id` is set instead. */
+  recipient_id: string | null;
   body: string;
   created_at: string;
   kind?: MessageKind;
   read_at?: string | null;
+  group_id?: string | null;
 }
 
 export type PlaceCategory = 'cafe' | 'food' | 'home' | 'work' | 'park' | 'gym' | 'shop' | 'other';
@@ -139,4 +141,26 @@ export interface Highlight {
   media_url?: string | null;
   created_at: string;
   expires_at: string;
+}
+
+/** A "Zenland": a friend-visible, hand-named place (unlike the private,
+ *  auto-detected significant places). Friends see the label so an
+ *  arrive/leave notice reads as "到了 健身房" instead of a private clue. */
+export interface Zone {
+  id: string;
+  owner_id: string;
+  label: string;
+  emoji: string;
+  lat: number;
+  lng: number;
+  radius_m: number;
+  created_at: string;
+}
+
+export interface ChatGroup {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: string;
+  members: Profile[];
 }
