@@ -416,24 +416,20 @@ button { color: inherit; }
    exactly how the previous fix quietly stopped covering the calc it never
    accounted for. body.phone-preview only needs to override this one
    variable, not fight the bottom/max-height math again. */
+/* PersonCard is now a plain bottom sheet, styled after the own-profile .sheet:
+   anchored to bottom: 0 (partly tucking under the dock, which is fine — the
+   own-profile sheet does the same), full width, rounded top corners only. No
+   floating-card positioning, no max-height math fighting the status bar. */
 .person-card {
-  --pc-bottom: calc(var(--safe-bottom) + var(--dock-h) + 12px);
-  position: absolute; z-index: 560; left: 50%; top: auto; bottom: var(--pc-bottom);
-  width: min(370px, calc(100% - 24px));
-  max-height: calc(100dvh - var(--safe-top) - var(--pc-bottom));
+  position: absolute; z-index: 530; left: 0; right: 0; bottom: 0; top: auto;
+  width: auto;
+  max-height: 74%;
   display: flex; flex-direction: column;
-  padding: 18px 25px 25px; border: 2px solid #fff; border-radius: 32px; background: rgba(255,255,255,.97); box-shadow: 0 30px 90px rgba(44,30,72,.34); transform: translateX(-50%); text-align: center; backdrop-filter: blur(22px);
+  padding: 12px 20px calc(var(--dock-h) + var(--safe-bottom) + 16px);
+  border: 2px solid rgba(255,255,255,.9); border-width: 2px 0 0; border-radius: 30px 30px 0 0; background: rgba(255,255,255,.96); box-shadow: var(--shadow); text-align: center; backdrop-filter: blur(24px);
 }
-/* Bottom-anchored with no top constraint, the card used to grow upward with
-   its content — on a short screen (or with a friend's story ring, streak
-   badge, milestone toast, and full throw grid all showing at once) that
-   pushed the card's own top, and even the drag handle, up behind the phone's
-   status bar. The header controls (grabber, close, best-friend star) stay
-   fixed in the card itself; the card itself is capped at max-height above so
-   its top edge can never pass the safe area no matter how tall the header
-   turns out to be, and this inner body is the flex-remainder that scrolls —
-   so those controls are always reachable no matter how tall the content
-   gets. */
+/* Comment kept short: the header controls (grabber, close, best-friend star)
+   stay fixed in the card; the body below is the flex-remainder that scrolls. */
 .person-card-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #e3d9f0 transparent; }
 .person-card-body::-webkit-scrollbar { width: 6px; }
 .person-card-body::-webkit-scrollbar-track { background: transparent; }
@@ -955,7 +951,6 @@ body.phone-preview .map-peek {
 }
 /* Overriding the variable (not `bottom` directly) keeps the card's
    max-height calc — which reads the same variable — in sync automatically. */
-body.phone-preview .person-card { --pc-bottom: 124px; }
 body.phone-preview .map-tools { bottom: 124px !important; }
 body.phone-preview .app-shell:has(.map-peek) .map-tools { bottom: 214px !important; }
 body.phone-preview .app-shell:has(.person-card) .map-tools { display: none; }

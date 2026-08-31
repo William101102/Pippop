@@ -34,7 +34,9 @@ export function PersonCard({
   const [draft, setDraft] = useState('');
   const [thrown, setThrown] = useState<{ emoji: string; key: number } | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
-  const drag = useDraggableSheet({ onDismiss: onClose, enabled: true, baseTransform: 'translateX(-50%)' });
+  // Styled as a plain bottom sheet now — no horizontal centering transform
+  // needed, so the drag offset can own the transform entirely.
+  const drag = useDraggableSheet({ onDismiss: onClose, enabled: true });
   const streak = streakInfo(person.streak_days, person.last_interaction_on, person.streak_grace_value, person.streak_grace_days);
 
   // Fires once per device the first time a friend's streak is seen crossing a
