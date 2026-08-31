@@ -53,6 +53,31 @@
 ### 10. PWA 未真正可用
 - 已有 `public/manifest.webmanifest`，缺 service worker / 离线缓存。
 
+## P4 — 2026-08 git pull 后新增风险（记录备查，暂缓处理）
+
+### 11. DB 迁移双份且已漂移
+- `supabase/` 与 `backend/supabase/` 下同名 migration 内容不一致（如 `202608300004` 60 行 vs 55 行），且新增 1343 行的 `setup.sql` 巨型脚本。
+- 风险：在生产库上执行 `setup.sql` 或两套 migration 可能产生重复 policy/表或漏列。先在 staging Supabase 项目验证。
+
+### 12. 隐私回归风险（本项目最核心风险）
+- 新增 background geolocation、overnight places、Zenlands zones、ghost mode 修复等多条涉及"谁能看到谁的位置"的代码路径。
+- 仓库里已经出现 4 个 `fix-*privacy*.sql` 热修，说明位置 upsert / RLS 曾出过问题。任何回归都可能泄露用户真实位置。
+
+### 13. iOS 原生打包权限风险
+- Capacitor 打包依赖 `ios-setup/Info.plist.additions.xml` 中的权限声明；缺失会导致 App Store 审核被拒或后台定位静默失效。Android 后台存活/耗电未测。
+
+### 14. 已删除 `src/hooks/useGeolocation.ts`
+- 未合并的分支若仍 import 它会直接编译失败；旧的 preview 模式 GPS 泄露修复需确认已迁移到新的 `src/lib/location.ts`。
+
+### 15. send-push Edge Function 密钥与鉴权
+- 需要在 Supabase 配置 APNs/FCM 密钥；push token 表若 RLS 不严可被未授权调用读取或滥发。
+
+### 16. 依赖面扩大 / 已知漏洞
+- `package-lock.json` 增加约 1800 行；`npm audit` 有报告漏洞，上线前需处理。
+
+### 17. App.tsx 大规模重写（+1271 行）
+- 核心 shell 在单个文件里重构，现有单测只覆盖 `cluster/geo/geofence/places`，UI 回归（pin 渲染、拖拽 sheet）缺乏测试保障。
+
 ---
 
 # Feature 路线（当前工作重点）

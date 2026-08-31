@@ -420,7 +420,11 @@ button { color: inherit; }
   --pc-bottom: calc(var(--safe-bottom) + var(--dock-h) + 12px);
   position: absolute; z-index: 560; left: 50%; top: auto; bottom: var(--pc-bottom);
   width: min(370px, calc(100% - 24px));
-  max-height: calc(100dvh - var(--safe-top) - var(--pc-bottom));
+  /* Capped at 75% of the available vertical space (bug report: the card is
+     bottom-anchored above the task bar, so tall content pushed its top edge
+     past the status bar. Scaling the max height down keeps it fully inside
+     the screen; the inner body scrolls for the rest. */
+  max-height: calc((100dvh - var(--safe-top) - var(--pc-bottom)) * 0.75);
   display: flex; flex-direction: column;
   padding: 18px 25px 25px; border: 2px solid #fff; border-radius: 32px; background: rgba(255,255,255,.97); box-shadow: 0 30px 90px rgba(44,30,72,.34); transform: translateX(-50%); text-align: center; backdrop-filter: blur(22px);
 }
