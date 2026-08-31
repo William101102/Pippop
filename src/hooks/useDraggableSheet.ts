@@ -5,6 +5,13 @@ import { haptic } from '../lib/native';
 const DISMISS_PX = 110;
 /** Below this the gesture is a tap, not a drag. */
 const SLOP_PX = 6;
+/**
+ * Upward drags get resistance (delta / 5) rather than a hard stop, but with
+ * no ceiling that resistance still lets a long enough drag push the sheet up
+ * past the phone's status bar / notch. Cap how far it can rise so it always
+ * reads as "already at the top" instead of drifting off-screen.
+ */
+const MAX_PULL_UP_PX = 40;
 
 interface Options {
   onDismiss: () => void;
@@ -68,8 +75,10 @@ export function useDraggableSheet({ onDismiss, enabled, baseTransform = '' }: Op
     }
 
     // Upward drags get heavy resistance instead of a hard stop, which reads as
-    // the sheet already being at its top rather than as a broken gesture.
-    setOffset(delta >= 0 ? delta : delta / 5);
+    // the sheet already being at its top rather than as a broken gesture —
+    // and that resistance is capped so a long drag can't push it past the
+    // top of the screen either.
+    setOffset(delta >= 0 ? delta : Math.max(delta / 5, -MAX_PULL_UP_PX));
   }, []);
 
   const onPointerUp = useCallback(
