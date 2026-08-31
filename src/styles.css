@@ -588,12 +588,41 @@ button { color: inherit; }
 .best-star { color: #f5b323; vertical-align: -1px; margin-right: 3px; }
 .streak-chip { margin-left: 6px; padding: 1px 5px; border-radius: 7px; background: #fff0e6; color: #c25a2a; font-size: 9.5px; font-style: normal; font-weight: 800; }
 .streak-badge { display: inline-flex; align-items: center; margin: 0 auto 4px; padding: 5px 12px; border-radius: 12px; background: linear-gradient(135deg, #fff1e4, #ffe6f1); color: #c25a2a; font-size: 11px; font-weight: 800; }
-.reaction-row { display: flex; justify-content: center; gap: 5px; margin: 4px 0 2px; }
-.reaction-row button { width: 38px; height: 38px; border: 1px solid #efe9f4; border-radius: 13px; background: #fbf9fd; font-size: 17px; line-height: 1; cursor: pointer; transition: transform .12s ease, background .15s ease; }
-.reaction-row button:hover { background: #f4eefb; }
 .reaction-avatar { display: grid; place-items: center; background: #fff3e8 !important; font-size: 19px; }
 .person-pin u.pin-reaction { position: absolute; z-index: 5; left: -6px; top: -10px; display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 9px rgba(41,25,72,.24); font-size: 14px; text-decoration: none; animation: pop-in .3s cubic-bezier(.2,1.5,.4,1); }
 @keyframes pop-in { from { transform: scale(0); } }
+
+/* Throw-something-at-a-friend picker (PersonCard) */
+.throw-section { position: relative; margin: 6px 0 4px; }
+.throw-section .eyebrow { text-align: center; }
+.throw-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-height: 148px; overflow-y: auto; padding: 2px; }
+.throw-chip { display: grid; justify-items: center; gap: 2px; width: 56px; padding: 8px 2px 6px; border: 1px solid #efe9f4; border-radius: 15px; background: #fbf9fd; cursor: pointer; transition: transform .12s cubic-bezier(.2,1.5,.4,1), background .15s ease, box-shadow .15s ease; }
+.throw-chip span { font-size: 20px; line-height: 1; }
+.throw-chip small { color: #8b7fa0; font-size: 8.5px; font-weight: 800; }
+.throw-chip:hover { background: #f4eefb; }
+.throw-chip:active { transform: scale(.88); background: #ece0fb; box-shadow: 0 0 0 4px rgba(91,53,242,.1); }
+.throw-fx { position: absolute; left: 50%; bottom: 30%; z-index: 20; font-size: 30px; pointer-events: none; animation: throw-arc .85s cubic-bezier(.25,.7,.4,1) forwards; }
+@keyframes throw-arc {
+  0% { transform: translate(-50%, 0) scale(.5) rotate(0deg); opacity: 1; }
+  60% { transform: translate(calc(-50% + 14px), -120px) scale(1.25) rotate(140deg); opacity: 1; }
+  100% { transform: translate(calc(-50% + 22px), -170px) scale(.6) rotate(220deg); opacity: 0; }
+}
+
+/* Big celebratory popup for an incoming throw. */
+.gift-toast { position: absolute; z-index: 610; top: calc(var(--safe-top) + 62px); left: 50%; display: flex; align-items: center; gap: 10px; padding: 10px 18px 10px 10px; border: 2px solid #fff; border-radius: 24px; background: linear-gradient(135deg, #fff, #fdf3ff); box-shadow: 0 20px 50px rgba(44,30,72,.3); transform: translateX(-50%); animation: gift-in .4s cubic-bezier(.2,1.4,.4,1), gift-out .35s ease .35s reverse, gift-hold 2.6s forwards; pointer-events: none; }
+.gift-toast-burst { position: absolute; left: 50%; top: -22px; font-size: 26px; transform: translateX(-50%); animation: gift-burst .7s cubic-bezier(.2,1.5,.4,1); }
+.gift-toast-avatar { width: 38px; height: 38px; }
+.gift-toast-text { display: grid; text-align: left; line-height: 1.35; }
+.gift-toast-text b { font-size: 12.5px; color: var(--ink); }
+.gift-toast-text small { font-size: 11px; color: #6d6280; font-weight: 700; }
+.gift-toast-spark { position: absolute; font-size: 13px; opacity: 0; animation: gift-spark 1.1s ease-out forwards; }
+.gift-toast-spark.s1 { left: 6px; top: -6px; animation-delay: .05s; }
+.gift-toast-spark.s2 { right: 10px; top: -12px; animation-delay: .15s; }
+.gift-toast-spark.s3 { right: 40%; bottom: -10px; animation-delay: .25s; }
+@keyframes gift-in { from { opacity: 0; transform: translate(-50%,-14px) scale(.85); } }
+@keyframes gift-hold { to { opacity: 1; } }
+@keyframes gift-burst { 0% { transform: translateX(-50%) scale(.3); opacity: 0; } 40% { transform: translateX(-50%) scale(1.4); opacity: 1; } 100% { transform: translateX(-50%) scale(1); opacity: 0; } }
+@keyframes gift-spark { 0% { opacity: 0; transform: translateY(0) scale(.4) rotate(0deg); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px) scale(1.1) rotate(40deg); } }
 
 /* Footprints */
 .footprints-panel { display: grid; gap: 10px; }

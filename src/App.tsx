@@ -13,6 +13,7 @@ import { FootprintsPanel } from './components/FootprintsPanel';
 import { FriendRail } from './components/FriendRail';
 import { HighlightsRail } from './components/HighlightsRail';
 import { HighlightViewer } from './components/HighlightViewer';
+import { GiftToast } from './components/GiftToast';
 import { GroupChatPanel } from './components/GroupChatPanel';
 import { NearbyPanel } from './components/NearbyPanel';
 import { NewGroupSheet } from './components/NewGroupSheet';
@@ -34,7 +35,7 @@ import { isConfigured, supabase } from './lib/supabase';
 import { publishWidgetSnapshot } from './lib/widget';
 import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
 import {
-  loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend,
+  loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend, THROWABLES,
 } from './services/social';
 import { fetchFriendLocation, loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
 import {
@@ -219,6 +220,7 @@ function App() {
   const [groupThreads, setGroupThreads] = useState<Record<string, Message[]>>({});
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [incomingGift, setIncomingGift] = useState<{ sender: Profile; emoji: string; label?: string; key: number } | null>(null);
   const isBottomSheet = useBottomSheetLayout();
   // Held in state, not a ref, so map init reliably fires on the render that mounts the node.
   const [mapNode, setMapNode] = useState<HTMLDivElement | null>(null);
@@ -236,6 +238,10 @@ function App() {
   locationRef.current = location;
   const previewRef = useRef(preview);
   previewRef.current = preview;
+  // Realtime handlers need a friend lookup, but must not force useRealtime's
+  // effect (channel subscribe/teardown) to rerun on every friends refresh.
+  const friendsRef = useRef<Friend[]>([]);
+  friendsRef.current = friends;
 
   const liveId = preview ? undefined : profile?.id;
   const { places, recordFix } = useSignificantPlaces(liveId, Boolean(liveId));
@@ -291,6 +297,13 @@ function App() {
   const handleReaction = useCallback((reaction: MapReaction) => {
     haptic('medium');
     setMyReactions(current => [reaction, ...current].slice(0, 30));
+    const sender = friendsRef.current.find(f => f.id === reaction.sender_id);
+    if (sender) {
+      const meta = THROWABLES.find(t => t.emoji === reaction.emoji);
+      const key = Date.now();
+      setIncomingGift({ sender, emoji: reaction.emoji, label: meta?.label, key });
+      window.setTimeout(() => setIncomingGift(current => (current?.key === key ? null : current)), 2600);
+    }
   }, []);
 
   const handlePlaceEvent = useCallback((event: PlaceEvent) => {
@@ -1699,6 +1712,9 @@ function App() {
       )}
 
       {toast && <div className="toast">{toast}</div>}
+      {incomingGift && (
+        <GiftToast key={incomingGift.key} sender={incomingGift.sender} emoji={incomingGift.emoji} label={incomingGift.label} />
+      )}
     </main>
   );
 }

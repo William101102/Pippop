@@ -5,7 +5,7 @@ import { compassLabel, fmtDist, fmtSpeed, timeAgo } from '../lib/format';
 import { bearingDeg, haversineKm } from '../lib/geo';
 import { useDraggableSheet } from '../hooks/useDraggableSheet';
 import { haptic } from '../lib/native';
-import { REACTION_EMOJI } from '../services/social';
+import { THROWABLES } from '../services/social';
 import type { Friend, LiveLocation } from '../types';
 
 interface Props {
@@ -27,7 +27,15 @@ export function PersonCard({
   onReact, onToggleBest, onSend, onError,
 }: Props) {
   const [draft, setDraft] = useState('');
+  const [thrown, setThrown] = useState<{ emoji: string; key: number } | null>(null);
   const drag = useDraggableSheet({ onDismiss: onClose, enabled: true });
+
+  function throwAt(emoji: string) {
+    haptic('medium');
+    setThrown({ emoji, key: Date.now() });
+    window.setTimeout(() => setThrown(null), 900);
+    onReact(emoji);
+  }
 
   const theirs = person.location;
   const km = myLocation && theirs
@@ -91,10 +99,19 @@ export function PersonCard({
         )}
       </div>
 
-      <div className="reaction-row">
-        {REACTION_EMOJI.map((emoji) => (
-          <button key={emoji} type="button" onClick={() => onReact(emoji)}>{emoji}</button>
-        ))}
+      <div className="throw-section">
+        <div className="eyebrow">扔一个给 {person.display_name.slice(0, 6)}</div>
+        <div className="throw-grid">
+          {THROWABLES.map((t) => (
+            <button key={t.emoji} type="button" className="throw-chip" onClick={() => throwAt(t.emoji)}>
+              <span>{t.emoji}</span>
+              <small>{t.label}</small>
+            </button>
+          ))}
+        </div>
+        {thrown && (
+          <div key={thrown.key} className="throw-fx" aria-hidden="true">{thrown.emoji}</div>
+        )}
       </div>
 
       <div className="person-actions">

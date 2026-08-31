@@ -32,7 +32,28 @@ export async function setBestFriend(meId: string, friendId: string, pinned: bool
   if (error) throw error;
 }
 
-export const REACTION_EMOJI = ['❤️', '😂', '🔥', '👀', '🎉', '😴'];
+export interface Throwable { emoji: string; label: string }
+
+/** The full "throw something at a friend" catalog — reuses map_reactions as-is
+ *  (the emoji column is free text), so growing this list needs no schema change. */
+export const THROWABLES: Throwable[] = [
+  { emoji: '🎂', label: '蛋糕' },
+  { emoji: '🎉', label: '庆祝' },
+  { emoji: '🌹', label: '玫瑰' },
+  { emoji: '❤️', label: '爱心' },
+  { emoji: '🍕', label: '披萨' },
+  { emoji: '☕', label: '续命' },
+  { emoji: '🍺', label: '干杯' },
+  { emoji: '🎁', label: '礼物' },
+  { emoji: '💦', label: '水球' },
+  { emoji: '🔥', label: '火' },
+  { emoji: '😂', label: '笑哭' },
+  { emoji: '👀', label: '看到你' },
+  { emoji: '😴', label: '困' },
+  { emoji: '🤙', label: '打招呼' },
+];
+
+export const REACTION_EMOJI = THROWABLES.map((t) => t.emoji);
 
 export async function sendReaction(meId: string, targetId: string, emoji: string) {
   const { error } = await supabase
