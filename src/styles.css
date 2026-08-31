@@ -412,12 +412,23 @@ button { color: inherit; }
 .setting-row div { display: grid; }
 .setting-row > span { color: #a097aa; font-size: 9px; }
 .person-card { position: absolute; z-index: 560; left: 50%; top: auto; bottom: calc(var(--safe-bottom) + var(--dock-h) + 12px); width: min(370px, calc(100% - 24px)); padding: 18px 25px 25px; border: 2px solid #fff; border-radius: 32px; background: rgba(255,255,255,.97); box-shadow: 0 30px 90px rgba(44,30,72,.34); transform: translateX(-50%); text-align: center; backdrop-filter: blur(22px); }
+/* Bottom-anchored with no top constraint, the card used to grow upward with
+   its content — on a short screen (or with a friend's story ring, streak
+   badge, milestone toast, and full throw grid all showing at once) that
+   pushed the card's own top, and even the drag handle, up behind the phone's
+   status bar. The header controls (grabber, close, best-friend star) stay
+   fixed in the card itself; only this inner body scrolls, so those controls
+   are always reachable no matter how tall the content gets. */
+.person-card-body { max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--dock-h) - 110px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #e3d9f0 transparent; }
+.person-card-body::-webkit-scrollbar { width: 6px; }
+.person-card-body::-webkit-scrollbar-track { background: transparent; }
+.person-card-body::-webkit-scrollbar-thumb { background: #e3d9f0; border-radius: 10px; }
 .person-card > .close-button { position: absolute; top: 14px; right: 14px; }
 .big-avatar { width: 86px; height: 86px; margin: 5px auto 14px; border-width: 5px; border-radius: 30px; font-size: 30px; }
 .big-avatar > img, .big-avatar > span { border-radius: 24px; }
 .big-avatar i { right: -9px; bottom: -7px; width: 33px; height: 33px; font-size: 16px; }
 .person-card h2 { margin: 0; font: 700 28px 'Fredoka'; }
-.person-card > p { margin: 4px 0 16px; color: var(--muted); font-size: 11px; }
+.person-card-body > p { margin: 4px 0 16px; color: var(--muted); font-size: 11px; }
 .presence { display: flex; align-items: center; gap: 7px; padding: 11px; border-radius: 16px; background: #f4f0f6; font-size: 11px; }
 .presence small { margin-left: auto; color: var(--muted); }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: #25cc92; box-shadow: 0 0 0 4px rgba(37,204,146,.13); }
@@ -832,7 +843,7 @@ button:focus-visible, input:focus-visible, label:focus-visible {
 }
 .friend-row, .rail-item, .chip, .visibility-row, .share-card-button, .my-id-card { transition: background .15s ease, transform .15s ease; }
 .empty-hint { font-size: 12px; line-height: 1.6; }
-.person-card > p { font-size: 12px; }
+.person-card-body > p { font-size: 12px; }
 .presence { font-size: 12px; }
 .presence small { font-size: 11px; }
 

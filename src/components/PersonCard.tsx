@@ -98,6 +98,7 @@ export function PersonCard({
         <Star size={17} />
       </button>
 
+      <div className="person-card-body">
       <Avatar profile={person} className="big-avatar" showStatus />
       <h2>{person.display_name}</h2>
       <p>@{person.username} · {timeAgo(theirs?.updated_at)}</p>
@@ -176,6 +177,7 @@ export function PersonCard({
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
         />
         <button type="button" onClick={() => void submit()}><Send size={18} /></button>
+      </div>
       </div>
     </section>
   );
