@@ -10,6 +10,14 @@ interface Options {
   onDismiss: () => void;
   /** Sheets are full height on desktop, where dragging them makes no sense. */
   enabled: boolean;
+  /**
+   * Any transform the sheet always needs (e.g. PersonCard's `translateX(-50%)`
+   * horizontal centering). The drag offset is appended to this rather than
+   * replacing it — an inline `style.transform` from the drag would otherwise
+   * clobber the base transform entirely, which is what made PersonCard jump
+   * sideways the instant a drag started.
+   */
+  baseTransform?: string;
 }
 
 /**
@@ -20,7 +28,7 @@ interface Options {
  * panels inside keep their own scrolling. Pointer events cover touch and mouse
  * without a second code path.
  */
-export function useDraggableSheet({ onDismiss, enabled }: Options) {
+export function useDraggableSheet({ onDismiss, enabled, baseTransform = '' }: Options) {
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const startRef = useRef<{ y: number; pointerId: number } | null>(null);
@@ -89,7 +97,7 @@ export function useDraggableSheet({ onDismiss, enabled }: Options) {
     },
     /** Spread onto the sheet itself. */
     sheetProps: {
-      style: offset ? { transform: `translateY(${offset}px)` } : undefined,
+      style: offset ? { transform: `${baseTransform} translateY(${offset}px)`.trim() } : undefined,
       className: dragging ? 'dragging' : '',
     },
   };

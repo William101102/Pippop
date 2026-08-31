@@ -262,6 +262,7 @@ button { color: inherit; }
 .person-pin::after {
   content: '';
   position: absolute;
+  box-sizing: border-box;
   left: 1px;
   top: 1px;
   width: 58px;
