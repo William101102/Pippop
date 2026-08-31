@@ -9,6 +9,10 @@ interface Props {
   onToggleHeat: (visible: boolean) => void;
   onHeatLoaded: (cells: HeatCell[]) => void;
   onFocusPlace: (lat: number, lng: number) => void;
+  /** Preview/demo mode has no backend to query — skip the fetch instead of
+   *  showing a scary "failed to load" error on the very first thing a
+   *  no-account visitor sees. */
+  preview?: boolean;
 }
 
 const RANGES = [
@@ -24,13 +28,20 @@ function humanMinutes(minutes: number) {
   return `${(hours / 24).toFixed(1)} d`;
 }
 
-export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFocusPlace }: Props) {
+export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFocusPlace, preview }: Props) {
   const [days, setDays] = useState(30);
   const [places, setPlaces] = useState<FrequentPlace[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (preview) {
+      setPlaces([]);
+      onHeatLoaded([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     let stale = false;
     setLoading(true);
     setError(null);
@@ -50,7 +61,7 @@ export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFoc
     return () => {
       stale = true;
     };
-  }, [days, onHeatLoaded]);
+  }, [days, onHeatLoaded, preview]);
 
   const totals = useMemo(() => {
     const minutes = places.reduce((sum, p) => sum + Number(p.minutes || 0), 0);

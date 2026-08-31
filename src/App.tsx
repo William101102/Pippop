@@ -1602,6 +1602,7 @@ function App() {
                 onToggleHeat={(next) => { haptic('select'); setHeatVisible(next); }}
                 onHeatLoaded={setHeatCells}
                 onFocusPlace={focusMapOn}
+                preview={preview}
               />
 
               <ZonesSection
