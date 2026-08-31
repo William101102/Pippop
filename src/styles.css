@@ -587,7 +587,46 @@ button { color: inherit; }
 .best-friend-toggle.on { color: #8a5a00; background: linear-gradient(135deg, #ffe08a, #ffd34e); }
 .best-star { color: #f5b323; vertical-align: -1px; margin-right: 3px; }
 .streak-chip { margin-left: 6px; padding: 1px 5px; border-radius: 7px; background: #fff0e6; color: #c25a2a; font-size: 9.5px; font-style: normal; font-weight: 800; }
-.streak-badge { display: inline-flex; align-items: center; margin: 0 auto 4px; padding: 5px 12px; border-radius: 12px; background: linear-gradient(135deg, #fff1e4, #ffe6f1); color: #c25a2a; font-size: 11px; font-weight: 800; }
+.streak-chip.blaze, .streak-chip.legend { background: linear-gradient(135deg, #ffdca0, #ff9f5a); color: #7a3300; }
+.streak-chip.at-risk { background: #fff2f2; color: #c23a3a; animation: streak-risk-pulse 1.4s ease-in-out infinite; }
+.streak-badge { display: inline-flex; align-items: center; gap: 4px; margin: 0 auto 4px; padding: 5px 12px; border-radius: 12px; background: linear-gradient(135deg, #fff1e4, #ffe6f1); color: #c25a2a; font-size: 11px; font-weight: 800; }
+.streak-badge.blaze, .streak-badge.legend { background: linear-gradient(135deg, #ffdca0, #ff9f5a); color: #7a3300; }
+.streak-badge.at-risk { background: linear-gradient(135deg, #fff0f0, #ffe2e2); color: #c23a3a; }
+.streak-badge em { margin-left: 4px; font-style: normal; font-weight: 700; font-size: 9.5px; opacity: .8; }
+@keyframes streak-risk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.streak-milestone { display: flex; align-items: center; justify-content: center; gap: 6px; margin: -2px auto 6px; padding: 6px 14px; border-radius: 14px; background: linear-gradient(135deg, #ffe08a, #ff9f5a); color: #7a3300; font: 800 12px 'Fredoka'; animation: gift-in .4s cubic-bezier(.2,1.4,.4,1), gift-burst .9s ease .1s; }
+
+/* Location-tagged story pins on the map, à la Snap Map — a perfect circle
+   with an IG-style gradient ring, deliberately not the teardrop pin shape. */
+.story-pin-shell { background: none; border: none; }
+.story-pin { position: relative; width: 46px; height: 46px; cursor: pointer; filter: drop-shadow(0 6px 12px rgba(44,34,71,.28)); }
+.story-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, #ff9f5a, #ff3e86, #5b35f2, #25c9b7, #ff9f5a); animation: story-ring-spin 6s linear infinite; }
+.story-thumb { position: absolute; inset: 3px; display: grid; place-items: center; overflow: hidden; border: 2px solid #fff; border-radius: 50%; background: #f4f0f6; }
+.story-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.story-pin-fallback { font-size: 18px; }
+@keyframes story-ring-spin { to { transform: rotate(360deg); } }
+
+/* Highlight composer: opt-in "attach my location" toggle. */
+.location-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 13px; border: 1px solid #e8e2ed; border-radius: 16px; background: #faf8fc; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.location-toggle.on { border-color: var(--violet); background: rgba(91,53,242,.06); }
+.location-toggle:disabled { opacity: .5; cursor: not-allowed; }
+.location-toggle svg { flex-shrink: 0; color: var(--violet); }
+.location-toggle div { flex: 1; display: grid; line-height: 1.4; }
+.location-toggle b { font-size: 12px; }
+.location-toggle small { color: var(--muted); font-size: 10px; font-weight: 700; }
+.toggle-dot { position: relative; flex-shrink: 0; width: 34px; height: 20px; border-radius: 12px; background: #e2dae9; transition: background .15s ease; }
+.toggle-dot::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(41,25,72,.25); transition: transform .18s cubic-bezier(.2,1.3,.4,1); }
+.toggle-dot.on { background: var(--violet); }
+.toggle-dot.on::after { transform: translateX(14px); }
+
+/* Invite welcome card — the "you're friends now" moment for a redeemed token. */
+.invite-welcome-backdrop { position: fixed; inset: 0; z-index: 900; display: grid; place-items: center; padding: 24px; background: rgba(30,20,48,.5); backdrop-filter: blur(4px); animation: card-in .2s ease; }
+.invite-welcome-card { position: relative; width: min(340px, 100%); padding: 30px 26px 26px; border: 2px solid #fff; border-radius: 32px; background: #fff; box-shadow: 0 30px 90px rgba(44,30,72,.4); text-align: center; animation: gift-in .35s cubic-bezier(.2,1.4,.4,1); }
+.invite-welcome-card > .close-button { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: #f2eef5; }
+.invite-welcome-icon { display: grid; place-items: center; width: 40px; height: 40px; margin: 0 auto 6px; border-radius: 50%; background: linear-gradient(135deg, #ffe08a, #ff9f5a); color: #7a3300; animation: gift-burst .8s ease .1s; }
+.invite-welcome-card .big-avatar { margin: 4px auto 10px; }
+.invite-welcome-card h2 { margin: 0 0 6px; font: 700 21px 'Fredoka'; }
+.invite-welcome-card p { margin: 0 0 18px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .reaction-avatar { display: grid; place-items: center; background: #fff3e8 !important; font-size: 19px; }
 .person-pin u.pin-reaction { position: absolute; z-index: 5; left: -6px; top: -10px; display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 9px rgba(41,25,72,.24); font-size: 14px; text-decoration: none; animation: pop-in .3s cubic-bezier(.2,1.5,.4,1); }
 @keyframes pop-in { from { transform: scale(0); } }

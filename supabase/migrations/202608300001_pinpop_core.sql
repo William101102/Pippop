@@ -70,6 +70,8 @@ create table if not exists public.highlights (
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '24 hours')
 );
+alter table public.highlights add column if not exists lat double precision;
+alter table public.highlights add column if not exists lng double precision;
 
 create table if not exists public.blocks (
   blocker_id uuid not null references public.profiles(id) on delete cascade,

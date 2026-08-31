@@ -16,6 +16,8 @@ export const demoMe: Profile = {
 };
 
 const now = Date.now();
+const today = new Date(now).toISOString().slice(0, 10);
+const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10);
 
 export const demoLocation: LiveLocation = {
   user_id: 'demo-me',
@@ -37,6 +39,7 @@ export const demoFriends: Friend[] = [
     battery_level: 62,
     is_best_friend: true,
     streak_days: 14,
+    last_interaction_on: today,
     location: {
       user_id: 'demo-maya',
       lat: 34.0158,
@@ -55,6 +58,7 @@ export const demoFriends: Friend[] = [
     battery_level: 41,
     is_charging: true,
     streak_days: 3,
+    last_interaction_on: yesterday,
     location: {
       user_id: 'demo-noah',
       lat: 34.0254,
@@ -88,6 +92,7 @@ export const demoFriends: Friend[] = [
     status_text: '工作中',
     battery_level: 54,
     streak_days: 7,
+    last_interaction_on: today,
     location: {
       user_id: 'demo-jun',
       lat: 34.011,

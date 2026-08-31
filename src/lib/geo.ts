@@ -38,23 +38,45 @@ export function usernameFromInviteUrl(raw: string) {
   return '';
 }
 
+/** A `?t=<uuid>` token link redeems instantly into a mutual friendship — see
+ *  redeemInvite. Older `?add=username` links keep working via the function above. */
+export function inviteTokenFromUrl(raw: string) {
+  try {
+    const parsed = new URL(raw);
+    return parsed.searchParams.get('t')?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Invite links have to be openable by someone who does not have the app, and
  * inside the native shell location.origin is capacitor://localhost, so the
  * public web build is always the link target.
  */
-export function inviteUrl(username: string) {
+function inviteBaseUrl() {
   const configured = import.meta.env.VITE_PUBLIC_APP_URL?.replace(/\/+$/, '');
-  const base = configured
+  return configured
     ? `${configured}/`
     : isNative
       ? 'https://william101102.github.io/zenly-app/'
       : `${location.origin}${location.pathname}`;
-  return `${base}?add=${encodeURIComponent(username)}`;
 }
 
-export function inviteText(username: string, displayName: string) {
-  return `加我 Pinpop 好友 @${username}（${displayName}）\n${inviteUrl(username)}`;
+export function inviteUrl(username: string) {
+  return `${inviteBaseUrl()}?add=${encodeURIComponent(username)}`;
+}
+
+/** The fast-path invite link: whoever opens it becomes a friend in one tap,
+ *  no separate accept step. Falls back to inviteUrl's username-search flow
+ *  when no token could be minted (table not migrated yet). */
+export function inviteUrlWithToken(token: string | null, username: string) {
+  if (!token) return inviteUrl(username);
+  return `${inviteBaseUrl()}?t=${encodeURIComponent(token)}`;
+}
+
+export function inviteText(username: string, displayName: string, token?: string | null) {
+  return `加我 Pinpop 好友 @${username}（${displayName}）\n${inviteUrlWithToken(token ?? null, username)}`;
 }
 
 export function friendShareText(username: string, displayName: string) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BatteryCharging, MessageCircle, Send, Share2, SmilePlus, Sparkles, Star, X } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { compassLabel, fmtDist, fmtSpeed, timeAgo } from '../lib/format';
@@ -6,7 +6,12 @@ import { bearingDeg, haversineKm } from '../lib/geo';
 import { useDraggableSheet } from '../hooks/useDraggableSheet';
 import { haptic } from '../lib/native';
 import { THROWABLES } from '../services/social';
+import { streakInfo } from '../lib/streak';
 import type { Friend, LiveLocation } from '../types';
+
+// Escalating milestones, mirroring Snapchat's own streak beats — big enough
+// gaps that crossing one actually feels like an event.
+const STREAK_MILESTONES = [3, 7, 14, 30, 50, 100, 200, 365];
 
 interface Props {
   person: Friend;
@@ -28,7 +33,29 @@ export function PersonCard({
 }: Props) {
   const [draft, setDraft] = useState('');
   const [thrown, setThrown] = useState<{ emoji: string; key: number } | null>(null);
+  const [milestone, setMilestone] = useState<number | null>(null);
   const drag = useDraggableSheet({ onDismiss: onClose, enabled: true });
+  const streak = streakInfo(person.streak_days, person.last_interaction_on);
+
+  // Fires once per device the first time a friend's streak is seen crossing a
+  // milestone — a purely client-side "did you notice" nudge, no schema needed.
+  useEffect(() => {
+    const key = `pinpop-streak-seen-${person.id}`;
+    let seen = 0;
+    try { seen = Number(localStorage.getItem(key) || 0); } catch { /* private mode etc */ }
+    const current = streak.days;
+    const crossed = STREAK_MILESTONES.find((m) => current >= m && seen < m);
+    if (crossed) {
+      haptic('success');
+      setMilestone(crossed);
+      const t = window.setTimeout(() => setMilestone(null), 2800);
+      try { localStorage.setItem(key, String(current)); } catch { /* ignore */ }
+      return () => window.clearTimeout(t);
+    }
+    if (current !== seen) {
+      try { localStorage.setItem(key, String(current)); } catch { /* ignore */ }
+    }
+  }, [person.id, streak.days]);
 
   function throwAt(emoji: string) {
     haptic('medium');
@@ -74,8 +101,17 @@ export function PersonCard({
       <Avatar profile={person} className="big-avatar" showStatus />
       <h2>{person.display_name}</h2>
       <p>@{person.username} · {timeAgo(theirs?.updated_at)}</p>
-      {(person.streak_days ?? 0) > 0 && (
-        <div className="streak-badge">🔥 连续互动 {person.streak_days} 天</div>
+      {streak.days > 0 && (
+        <div className={`streak-badge ${streak.tier} ${streak.atRisk ? 'at-risk' : ''}`}>
+          {streak.atRisk ? '⏳' : streak.icon} 连续互动 {streak.days} 天
+          {streak.atRisk && <em>今天还没互动，午夜前会断掉</em>}
+        </div>
+      )}
+      {milestone && (
+        <div className="streak-milestone" aria-hidden="true">
+          <span>🎉</span>
+          <b>连续 {milestone} 天！</b>
+        </div>
       )}
 
       {km != null && heading != null ? (

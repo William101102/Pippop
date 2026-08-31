@@ -62,9 +62,11 @@ export async function loadFriendsBundle(meId: string) {
     ]);
     // The streak lives on the friendship row, which is already loaded above.
     const streakByFriend = new Map<string, number>();
+    const lastInteractionByFriend = new Map<string, string | null>();
     for (const rel of accepted as FriendshipRow[]) {
       const other = rel.requester_id === meId ? rel.addressee_id : rel.requester_id;
       streakByFriend.set(other, rel.streak_days ?? 0);
+      lastInteractionByFriend.set(other, rel.last_interaction_on ?? null);
     }
     friends = ((profiles || []) as Profile[]).map((p) => {
       const location = locations.find((l) => l.user_id === p.id) || null;
@@ -73,6 +75,7 @@ export async function loadFriendsBundle(meId: string) {
         location,
         ghost_mode: location?.privacy_mode,
         streak_days: streakByFriend.get(p.id) ?? 0,
+        last_interaction_on: lastInteractionByFriend.get(p.id) ?? null,
         is_best_friend: bestFriendIds.has(p.id),
       };
     });
@@ -134,4 +137,38 @@ export async function respondFriendRequest(relId: string, status: 'accepted' | '
 export async function fetchFriendLocation(userId: string) {
   const rows = await fetchLocationsForUsers([userId]);
   return rows[0] || null;
+}
+
+const MISSING_TABLE = '42P01';
+const MISSING_FUNCTION = '42883';
+
+/** A single-use-friendly invite link token. Anyone who redeems it becomes an
+ *  accepted friend immediately — no separate approval step — because holding
+ *  a link that was only ever shared privately by its owner already is the
+ *  owner's consent, the same trust model Discord/WhatsApp invite links use. */
+export async function createInviteToken(ownerId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('invites')
+    .insert({ owner_id: ownerId })
+    .select('id')
+    .single();
+  if (error) {
+    if (error.code === MISSING_TABLE) return null;
+    throw error;
+  }
+  return (data as { id: string }).id;
+}
+
+/** Redeems an invite token: creates (or upgrades) the friendship as already
+ *  accepted, atomically, via a security-definer RPC — see redeem_invite in
+ *  setup.sql. Returns the inviter's id, or null if the token/table is missing
+ *  (old link, expired token, or setup.sql not migrated yet). */
+export async function redeemInvite(token: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('redeem_invite', { p_token: token });
+  if (error) {
+    if (error.code === MISSING_TABLE || error.code === MISSING_FUNCTION) return null;
+    throw error;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row as { owner_id: string } | null)?.owner_id ?? null;
 }

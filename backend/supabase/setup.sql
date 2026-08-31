@@ -206,6 +206,10 @@ create table if not exists public.highlights (
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '24 hours')
 );
+-- Opt-in location on a highlight — renders as a story pin on the map, à la
+-- Snap Map, until it expires. Null unless the author chose to attach it.
+alter table public.highlights add column if not exists lat double precision;
+alter table public.highlights add column if not exists lng double precision;
 
 create table if not exists public.blocks (
   blocker_id uuid not null references public.profiles(id) on delete cascade,
@@ -304,6 +308,20 @@ alter table public.messages drop constraint if exists messages_recipient_or_grou
 alter table public.messages add constraint messages_recipient_or_group check (
   (group_id is null and recipient_id is not null) or (group_id is not null and recipient_id is null)
 );
+
+-- Invite-link tokens. Possessing one — because its owner shared it directly
+-- with you — is treated as that owner's consent to friend whoever redeems
+-- it, the same trust model Discord/WhatsApp invite links use. Redemption
+-- only ever happens through the redeem_invite() security-definer function
+-- below, never by inserting into this table directly.
+create table if not exists public.invites (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz,
+  use_count integer not null default 0
+);
+create index if not exists invites_owner_idx on public.invites (owner_id);
 
 -- One row per device. Tokens rotate, so the token itself is the identity.
 create table if not exists public.push_tokens (
@@ -417,6 +435,48 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- Redeems an invite-link token into an immediately-accepted friendship.
+-- Security definer so it can write an 'accepted' row directly, bypassing the
+-- normal "create friend request" policy (which only ever allows 'pending')
+-- — the token itself, minted by create_invite_token-equivalent client insert
+-- and shared privately by its owner, stands in for that owner's consent.
+create or replace function public.redeem_invite(p_token uuid)
+returns table(owner_id uuid) language plpgsql security definer set search_path = public as $$
+declare
+  v_owner uuid;
+begin
+  select i.owner_id into v_owner
+    from public.invites i
+   where i.id = p_token
+     and (i.expires_at is null or i.expires_at > now());
+
+  if v_owner is null then
+    raise exception 'invite not found or expired';
+  end if;
+  if v_owner = auth.uid() then
+    raise exception 'cannot redeem your own invite';
+  end if;
+
+  if exists (
+    select 1 from public.friendships f
+    where (f.requester_id = v_owner and f.addressee_id = auth.uid())
+       or (f.requester_id = auth.uid() and f.addressee_id = v_owner)
+  ) then
+    update public.friendships f set status = 'accepted'
+     where (f.requester_id = v_owner and f.addressee_id = auth.uid())
+        or (f.requester_id = auth.uid() and f.addressee_id = v_owner);
+  else
+    insert into public.friendships (requester_id, addressee_id, status)
+    values (auth.uid(), v_owner, 'accepted');
+  end if;
+
+  update public.invites set use_count = use_count + 1 where id = p_token;
+
+  return query select v_owner;
+end;
+$$;
+grant execute on function public.redeem_invite(uuid) to authenticated;
+
 -- ----------------------------------------------------------------------------
 -- Row level security
 -- ----------------------------------------------------------------------------
@@ -439,6 +499,7 @@ alter table public.push_tokens enable row level security;
 alter table public.zones enable row level security;
 alter table public.chat_groups enable row level security;
 alter table public.chat_group_members enable row level security;
+alter table public.invites enable row level security;
 
 -- Profiles: every signed-in user can search others; you may only edit your own.
 drop policy if exists "authenticated read profiles" on public.profiles;
@@ -551,6 +612,13 @@ create policy "manage own zones" on public.zones for all
 drop policy if exists "friends read zones" on public.zones;
 create policy "friends read zones" on public.zones for select
   using (auth.uid() = owner_id or public.shares_location_with(owner_id, auth.uid()));
+
+-- Invites: you can create/see/revoke your own links. Nobody else can select
+-- this table directly — redemption goes through redeem_invite() only, so a
+-- token's validity can't be probed by querying the table.
+drop policy if exists "manage own invites" on public.invites;
+create policy "manage own invites" on public.invites for all
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 
 -- Group chat: only the creator can make a group or add its first members;
 -- membership itself is otherwise read-only from the client for v1 (no
@@ -833,11 +901,13 @@ returns table (
 $$;
 
 -- ----------------------------------------------------------------------------
--- Interaction streaks. Bumped from a trigger on messages so the count cannot
--- drift from the actual conversation, and kept symmetric by living on the pair.
+-- Interaction streaks. Bumped from triggers on messages AND map_reactions
+-- (throwing something at a friend keeps the streak alive too — Snapchat's
+-- streaks count any snap, not just a typed one) so the count cannot drift
+-- from actual activity, and kept symmetric by living on the pair.
 -- ----------------------------------------------------------------------------
-create or replace function public.touch_friend_streak()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function public.bump_friend_streak(p_a uuid, p_b uuid)
+returns void language plpgsql security definer set search_path = public as $$
 declare
   today date := (now() at time zone 'utc')::date;
 begin
@@ -849,15 +919,23 @@ begin
          end,
          last_interaction_on = today
    where f.status = 'accepted'
-     and ((f.requester_id = new.sender_id and f.addressee_id = new.recipient_id)
-       or (f.addressee_id = new.sender_id and f.requester_id = new.recipient_id));
+     and ((f.requester_id = p_a and f.addressee_id = p_b)
+       or (f.addressee_id = p_a and f.requester_id = p_b));
 
   update public.friendships f
      set longest_streak = f.streak_days
    where f.streak_days > f.longest_streak
-     and ((f.requester_id = new.sender_id and f.addressee_id = new.recipient_id)
-       or (f.addressee_id = new.sender_id and f.requester_id = new.recipient_id));
+     and ((f.requester_id = p_a and f.addressee_id = p_b)
+       or (f.addressee_id = p_a and f.requester_id = p_b));
+end;
+$$;
 
+create or replace function public.touch_friend_streak()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- new.recipient_id is null for a group message, so the update inside
+  -- bump_friend_streak simply matches zero rows — a safe no-op.
+  perform public.bump_friend_streak(new.sender_id, new.recipient_id);
   return new;
 end;
 $$;
@@ -866,6 +944,19 @@ drop trigger if exists messages_touch_streak on public.messages;
 create trigger messages_touch_streak
   after insert on public.messages
   for each row execute function public.touch_friend_streak();
+
+create or replace function public.touch_friend_streak_reaction()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.bump_friend_streak(new.sender_id, new.target_id);
+  return new;
+end;
+$$;
+
+drop trigger if exists reactions_touch_streak on public.map_reactions;
+create trigger reactions_touch_streak
+  after insert on public.map_reactions
+  for each row execute function public.touch_friend_streak_reaction();
 
 -- A streak only survives if it was touched today or yesterday; this clears the
 -- stale ones so the UI does not have to special case them.
@@ -1184,4 +1275,16 @@ union all select 'friendships deduplicated',
          group by least(requester_id, addressee_id), greatest(requester_id, addressee_id)
          having count(*) > 1)
        then 'DUPLICATES REMAIN' else 'ok' end
+union all select 'highlights.lat column',
+       case when exists (select 1 from information_schema.columns
+         where table_schema = 'public' and table_name = 'highlights' and column_name = 'lat')
+       then 'ok' else 'MISSING' end
+union all select 'invites table',
+       case when to_regclass('public.invites') is not null then 'ok' else 'MISSING' end
+union all select 'redeem_invite()',
+       case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = 'redeem_invite') then 'ok' else 'MISSING' end
+union all select 'reaction streak trigger',
+       case when exists (select 1 from pg_trigger
+         where tgname = 'reactions_touch_streak' and not tgisinternal) then 'ok' else 'MISSING' end
 order by item;

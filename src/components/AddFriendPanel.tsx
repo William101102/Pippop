@@ -14,9 +14,12 @@ interface Props {
   onSendRequest: (id: string) => Promise<void>;
   onNotify: (text: string) => void;
   initialQuery?: string;
+  inviteToken?: string | null;
 }
 
-export function AddFriendPanel({ me, results, sentIds, friendIds, onClose, onSearch, onSendRequest, onNotify, initialQuery = '' }: Props) {
+export function AddFriendPanel({
+  me, results, sentIds, friendIds, onClose, onSearch, onSendRequest, onNotify, initialQuery = '', inviteToken,
+}: Props) {
   const [query, setQuery] = useState(initialQuery);
 
   useEffect(() => {
@@ -29,9 +32,9 @@ export function AddFriendPanel({ me, results, sentIds, friendIds, onClose, onSea
   }, [initialQuery, onSearch]);
 
   async function shareSelf() {
-    const text = inviteText(me.username, me.display_name);
+    const text = inviteText(me.username, me.display_name, inviteToken);
     const result = await shareText('Pinpop 好友邀请', text, text.split('\n').pop() || '');
-    onNotify(result === 'shared' ? '已分享你的邀请' : '邀请链接已复制，发给朋友吧！');
+    onNotify(result === 'shared' ? '已分享你的邀请' : '邀请链接已复制，发给朋友吧！对方点开一步就能加上你');
   }
 
   return (

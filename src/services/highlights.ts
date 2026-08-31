@@ -86,11 +86,18 @@ export async function uploadHighlightPhoto(userId: string, file: File): Promise<
   return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
 }
 
-export async function postHighlight(userId: string, body: string, mediaUrl: string | null) {
+export async function postHighlight(
+  userId: string,
+  body: string,
+  mediaUrl: string | null,
+  location?: { lat: number; lng: number } | null,
+) {
   const { error } = await supabase.from('highlights').insert({
     user_id: userId,
     body: body.trim(),
     media_url: mediaUrl,
+    lat: location?.lat ?? null,
+    lng: location?.lng ?? null,
   });
   if (error) {
     if (error.code === MISSING_TABLE) throw new Error('动态功能还没上线：请先运行 backend/supabase/setup.sql');

@@ -20,6 +20,16 @@ people who do not have the app yet.
   to zoom back in.
 - **Highlights** — post a photo (or just a line of text) from the 朋友 tab;
   friends see it in a Zenly/Snap-style story rail for 24 hours, then it's gone.
+  Optionally attach your location and it also shows as a circular story pin
+  on the map — à la Snap Map — until it expires.
+- **Throw something** — tap a friend, pick from 14 throwables (🎂🌹🍕💦…) and
+  send it with a little arc animation; landing on someone pops a celebratory
+  toast on their end.
+- **Streaks** — consecutive days you and a friend interact (message or throw)
+  light up an escalating ✨ → 🔥 → 💯 badge, with a ⏳ warning when a streak is
+  about to lapse and a small celebration the first time it crosses a milestone.
+- **Invite links** — sharing your link mints a token; whoever opens it becomes
+  a friend immediately, no separate approval step.
 
 ## Run it locally
 

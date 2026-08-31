@@ -15,6 +15,7 @@ import { HighlightsRail } from './components/HighlightsRail';
 import { HighlightViewer } from './components/HighlightViewer';
 import { GiftToast } from './components/GiftToast';
 import { GroupChatPanel } from './components/GroupChatPanel';
+import { InviteWelcomeCard } from './components/InviteWelcomeCard';
 import { NearbyPanel } from './components/NearbyPanel';
 import { NewGroupSheet } from './components/NewGroupSheet';
 import { PostHighlightSheet } from './components/PostHighlightSheet';
@@ -25,8 +26,11 @@ import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
 import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
 import { fmtDist, fmtSpeed } from './lib/format';
+import { streakInfo } from './lib/streak';
 import { clusterByPixels } from './lib/cluster';
-import { friendShareText, haversineKm, inviteText, inviteUrl, shareText, usernameFromInviteUrl } from './lib/geo';
+import {
+  friendShareText, haversineKm, inviteText, inviteTokenFromUrl, inviteUrl, shareText, usernameFromInviteUrl,
+} from './lib/geo';
 import { createGeofenceTracker, createZoneGeofenceTracker } from './lib/geofence';
 import { createFixGate, getCurrentFix, watchLocation } from './lib/location';
 import { dismissSplash, getLaunchUrl, haptic, isNative, onAppResume, onAppUrlOpen, openAppSettings } from './lib/native';
@@ -37,7 +41,9 @@ import { checkIn, loadMyVisits, loadNearbyPlaces } from './services/checkins';
 import {
   loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend, THROWABLES,
 } from './services/social';
-import { fetchFriendLocation, loadFriendsBundle, respondFriendRequest, sendFriendRequest } from './services/friends';
+import {
+  createInviteToken, fetchFriendLocation, loadFriendsBundle, redeemInvite, respondFriendRequest, sendFriendRequest,
+} from './services/friends';
 import {
   deleteHighlight, loadFriendHighlights, postHighlight, uploadHighlightPhoto,
 } from './services/highlights';
@@ -187,6 +193,10 @@ function App() {
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [addResults, setAddResults] = useState<Profile[]>([]);
   const [inviteQuery, setInviteQuery] = useState('');
+  const [pendingInviteToken, setPendingInviteToken] = useState('');
+  const [inviteRedeeming, setInviteRedeeming] = useState(false);
+  const [myInviteToken, setMyInviteToken] = useState<string | null>(null);
+  const [newFriendWelcome, setNewFriendWelcome] = useState<Profile | null>(null);
   const [location, setLocation] = useState<LiveLocation | null>(null);
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
@@ -352,15 +362,19 @@ function App() {
 
   useEffect(() => {
     const invite = readInviteQuery();
+    const token = inviteTokenFromUrl(window.location.href);
     if (invite) setInviteQuery(invite);
+    if (token) setPendingInviteToken(token);
     try {
-      if (invite) window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      if (invite || token) window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     } catch {
       // history rewriting is cosmetic
     }
     const apply = (url: string) => {
       const name = usernameFromInviteUrl(url);
       if (name) setInviteQuery(name);
+      const t = inviteTokenFromUrl(url);
+      if (t) setPendingInviteToken(t);
     };
     void getLaunchUrl().then(apply);
     return onAppUrlOpen(apply);
@@ -471,10 +485,42 @@ function App() {
     })();
   }, [signedIn, reloadFriends, preview]);
 
-  // Open the add-friend sheet automatically when arriving from an invite link.
+  // Open the add-friend sheet automatically when arriving from a legacy
+  // username invite link (no token — falls back to the search-and-request flow).
   useEffect(() => {
     if (inviteQuery && profile) setPanel('add');
   }, [inviteQuery, profile]);
+
+  // A token link redeems straight into a mutual friendship — no search step,
+  // no waiting on the other side to approve. See redeemInvite/redeem_invite.
+  useEffect(() => {
+    if (!pendingInviteToken || !profile || preview || !isUserUuid(profile.id) || inviteRedeeming) return;
+    const token = pendingInviteToken;
+    setInviteRedeeming(true);
+    (async () => {
+      try {
+        const ownerId = await redeemInvite(token);
+        if (!ownerId) return; // table/RPC not migrated yet — link just does nothing
+        if (ownerId === profile.id) { notify('这是你自己的邀请链接哦'); return; }
+        const { data: ownerProfile } = await supabase.from('profiles').select('*').eq('id', ownerId).maybeSingle();
+        await reloadFriends(profile.id);
+        if (ownerProfile) setNewFriendWelcome(ownerProfile as Profile);
+        else notify('加好友成功！');
+      } catch (error) {
+        notify(error instanceof Error ? error.message : '邀请链接无效或已过期');
+      } finally {
+        setPendingInviteToken('');
+        setInviteRedeeming(false);
+      }
+    })();
+  }, [pendingInviteToken, profile, preview, inviteRedeeming, reloadFriends, notify]);
+
+  // Mint my own invite token lazily, the first time I open the add-friend
+  // sheet — every share reuses it until the sheet is reopened fresh.
+  useEffect(() => {
+    if (panel !== 'add' || !profile || preview || !isUserUuid(profile.id) || myInviteToken) return;
+    createInviteToken(profile.id).then(setMyInviteToken).catch(() => undefined);
+  }, [panel, profile, preview, myInviteToken]);
 
   useEffect(() => {
     if (!signedIn || !profile) return;
@@ -721,7 +767,26 @@ function App() {
       });
       L.marker([z.lat, z.lng], { icon, interactive: false, zIndexOffset: -450 }).addTo(layers.current!);
     });
-  }, [friends, location, profile, profile?.avatar_url, places, nearbyPlaces, myZones, mapReady, mapZoom, freshReaction, openFriend, ghostMode, pinAvatarVersion]);
+    // Story pins: a friend's newest still-live, location-tagged highlight —
+    // à la Snap Map, separate from their live position pin above. Perfect
+    // circle with an IG-style gradient ring, not the teardrop location shape.
+    const now = Date.now();
+    friends.forEach(f => {
+      const latest = (highlights[f.id] || []).find(h => h.lat != null && h.lng != null && new Date(h.expires_at).getTime() > now);
+      if (!latest) return;
+      const thumb = latest.media_url
+        ? `<img src="${safeHtml(latest.media_url)}" alt="" />`
+        : `<span class="story-pin-fallback">${safeHtml(f.status_emoji || '📍')}</span>`;
+      const icon = L.divIcon({
+        className: 'story-pin-shell',
+        html: `<div class="story-pin"><i class="story-ring"></i><span class="story-thumb">${thumb}</span></div>`,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
+      });
+      const marker = L.marker([latest.lat as number, latest.lng as number], { icon, zIndexOffset: 600 }).addTo(layers.current!);
+      marker.on('click', () => setHighlightViewerId(f.id));
+    });
+  }, [friends, location, profile, profile?.avatar_url, places, nearbyPlaces, myZones, highlights, mapReady, mapZoom, freshReaction, openFriend, ghostMode, pinAvatarVersion]);
 
   // Plain circles rather than a heatmap plugin: with history bucketed into grid
   // cells server side, one translucent circle per cell already reads as heat and
@@ -989,7 +1054,7 @@ function App() {
     return {};
   }
 
-  async function submitHighlight(input: { body: string; file: File | null }) {
+  async function submitHighlight(input: { body: string; file: File | null; attachLocation: boolean }) {
     if (!profile) return { error: '登录状态已失效' };
     if (preview || !isUserUuid(profile.id)) {
       setPostingHighlight(false);
@@ -999,11 +1064,16 @@ function App() {
     setHighlightBusy(true);
     try {
       const mediaUrl = input.file ? await uploadHighlightPhoto(profile.id, input.file) : null;
-      await postHighlight(profile.id, input.body, mediaUrl);
+      const geo = input.attachLocation && location ? { lat: location.lat, lng: location.lng } : null;
+      await postHighlight(profile.id, input.body, mediaUrl, geo);
       setHighlights(current => ({
         ...current,
         [profile.id]: [
-          { id: `local-${Date.now()}`, user_id: profile.id, body: input.body.trim(), media_url: mediaUrl, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86_400_000).toISOString() },
+          {
+            id: `local-${Date.now()}`, user_id: profile.id, body: input.body.trim(), media_url: mediaUrl,
+            created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+            lat: geo?.lat ?? null, lng: geo?.lng ?? null,
+          },
           ...(current[profile.id] || []),
         ],
       }));
@@ -1295,6 +1365,7 @@ function App() {
           sentIds={sentIds}
           friendIds={friendIds}
           initialQuery={inviteQuery}
+          inviteToken={myInviteToken}
           onClose={() => { setInviteQuery(''); setPanel('friends'); }}
           onSearch={(q) => { searchProfiles(profile.id, q).then(setAddResults).catch(() => undefined); }}
           onSendRequest={async (id) => {
@@ -1316,7 +1387,7 @@ function App() {
       )}
 
       {postingHighlight && (
-        <PostHighlightSheet onClose={() => setPostingHighlight(false)} onSubmit={submitHighlight} />
+        <PostHighlightSheet location={location} onClose={() => setPostingHighlight(false)} onSubmit={submitHighlight} />
       )}
 
       {highlightViewerId && highlightAuthor && (highlights[highlightViewerId]?.length ?? 0) > 0 && (
@@ -1326,6 +1397,14 @@ function App() {
           highlights={highlights[highlightViewerId] || []}
           onClose={() => setHighlightViewerId(null)}
           onDelete={removeHighlight}
+        />
+      )}
+
+      {newFriendWelcome && (
+        <InviteWelcomeCard
+          friend={newFriendWelcome}
+          onClose={() => setNewFriendWelcome(null)}
+          onOpenChat={() => { openChat(newFriendWelcome.id); setNewFriendWelcome(null); }}
         />
       )}
 
@@ -1397,14 +1476,20 @@ function App() {
                     )}
                   </div>
                 )}
-                {filtered.map(f => (
+                {filtered.map(f => {
+                  const streak = streakInfo(f.streak_days, f.last_interaction_on);
+                  return (
                   <button className="friend-row" key={f.id} type="button" onClick={() => openFriend(f)}>
                     <Avatar profile={f} showStatus />
                     <div>
                       <b>
                         {f.is_best_friend && <Star size={12} className="best-star" />}
                         {f.display_name}
-                        {(f.streak_days ?? 0) > 0 && <i className="streak-chip">🔥{f.streak_days}</i>}
+                        {streak.days > 0 && (
+                          <i className={`streak-chip ${streak.tier} ${streak.atRisk ? 'at-risk' : ''}`}>
+                            {streak.atRisk ? '⏳' : streak.icon}{streak.days}
+                          </i>
+                        )}
                       </b>
                       <small>@{f.username} · {f.status_text}</small>
                     </div>
@@ -1417,7 +1502,8 @@ function App() {
                       <small>{f.is_charging && <BatteryCharging size={13} />} {f.battery_level != null ? `${f.battery_level}%` : ''}</small>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
               <button className="share-card-button" type="button" onClick={() => shareCard(profile)}>
                 <Share2 size={16} />

@@ -27,8 +27,11 @@ export interface LiveLocation {
 export interface Friend extends Profile {
   location?: LiveLocation | null;
   ghost_mode?: GhostMode;
-  /** Consecutive days the two of you have exchanged a message. */
+  /** Consecutive days the two of you have exchanged a message or a throw. */
   streak_days?: number;
+  /** UTC date (YYYY-MM-DD) the streak was last bumped — used to tell a live
+   *  streak from one the server just has not zeroed out yet. */
+  last_interaction_on?: string | null;
   is_best_friend?: boolean;
 }
 
@@ -141,6 +144,10 @@ export interface Highlight {
   media_url?: string | null;
   created_at: string;
   expires_at: string;
+  /** Where it was posted, when the author chose to attach a location — shows
+   *  up as a story pin on the map, à la Snap Map, until it expires. */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 /** A "Zenland": a friend-visible, hand-named place (unlike the private,
