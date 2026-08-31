@@ -1,5 +1,5 @@
 -- ============================================================================
--- Fix: ghost mode save fails with "隐私设置保存失败".
+-- Fix: ghost mode save fails with "Failed to save privacy setting".
 --
 -- Cause: location_privacy used primary key (owner_id, viewer_id), but account-
 -- wide defaults store viewer_id = null. PostgreSQL primary keys cannot contain

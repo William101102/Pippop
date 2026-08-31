@@ -1,5 +1,5 @@
 -- ============================================================================
--- Fix: Ghost Mode save still fails with "隐私设置保存失败" even after running
+-- Fix: Ghost Mode save still fails with "Failed to save privacy setting" even after running
 -- setup.sql once.
 --
 -- Cause: setup.sql replaced the old composite primary key on location_privacy

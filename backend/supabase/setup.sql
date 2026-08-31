@@ -18,7 +18,7 @@ create table if not exists public.profiles (
   display_name text not null default '',
   avatar_color text not null default '#ff6847',
   status_emoji text not null default '✨',
-  status_text text not null default '刚刚加入 Pinpop',
+  status_text text not null default 'Just joined Pinpop',
   created_at timestamptz not null default now()
 );
 
@@ -26,7 +26,7 @@ create table if not exists public.profiles (
 alter table public.profiles add column if not exists display_name text not null default '';
 alter table public.profiles add column if not exists avatar_color text not null default '#ff6847';
 alter table public.profiles add column if not exists status_emoji text not null default '✨';
-alter table public.profiles add column if not exists status_text text not null default '刚刚加入 Pinpop';
+alter table public.profiles add column if not exists status_text text not null default 'Just joined Pinpop';
 alter table public.profiles add column if not exists created_at timestamptz not null default now();
 alter table public.profiles add column if not exists avatar_url text;
 alter table public.profiles add column if not exists bio text not null default '';
@@ -139,7 +139,7 @@ create unique index if not exists location_privacy_friend_override
 -- unique index/constraint on exactly those columns, and neither partial index
 -- above qualifies, so every save failed with 42P10 "no unique or exclusion
 -- constraint matching the ON CONFLICT specification" — the real cause behind
--- "隐私设置保存失败". This plain index is what upsert actually needs.
+-- "Failed to save privacy setting". This plain index is what upsert actually needs.
 create unique index if not exists location_privacy_owner_viewer_key
   on public.location_privacy (owner_id, viewer_id);
 
@@ -272,7 +272,7 @@ alter table public.friendships add column if not exists streak_days integer not 
 alter table public.friendships add column if not exists longest_streak integer not null default 0;
 alter table public.friendships add column if not exists last_interaction_on date;
 
--- "小明 到了 公司". Written by the mover's own device, since only it knows which
+-- "Alex arrived at Office". Written by the mover's own device, since only it knows which
 -- of the user's private significant places a fix corresponds to.
 create table if not exists public.place_events (
   id uuid primary key default gen_random_uuid(),
@@ -1077,7 +1077,7 @@ begin
     loop
       perform public.notify_push(
         member_id,
-        coalesce(sender_name, '朋友') || ' · ' || coalesce(group_name, '群聊'),
+        coalesce(sender_name, 'Friend') || ' · ' || coalesce(group_name, 'Group chat'),
         left(coalesce(new.body, ''), 120)
       );
     end loop;
@@ -1086,10 +1086,10 @@ begin
 
   perform public.notify_push(
     new.recipient_id,
-    coalesce(sender_name, '朋友'),
+    coalesce(sender_name, 'Friend'),
     case new.kind
-      when 'wave' then '向你挥手了 👋'
-      when 'whats_up' then '问你在干什么 👀'
+      when 'wave' then 'waved at you 👋'
+      when 'whats_up' then 'asked what you\'re up to 👀'
       else left(coalesce(new.body, ''), 120)
     end
   );
@@ -1121,9 +1121,9 @@ begin
     if public.shares_location_with(new.user_id, friend_id) then
       perform public.notify_push(
         friend_id,
-        coalesce(mover_name, '朋友'),
-        (case new.kind when 'arrive' then '到了 ' else '离开了 ' end)
-          || coalesce(nullif(new.label, ''), '某个地方')
+        coalesce(mover_name, 'Friend'),
+        (case new.kind when 'arrive' then 'arrived at ' else 'left ' end)
+          || coalesce(nullif(new.label, ''), 'a place')
       );
     end if;
   end loop;
@@ -1198,7 +1198,7 @@ begin
     new.id,
     safe_username,
     coalesce(chosen_name, split_part(coalesce(new.email, safe_username), '@', 1)),
-    '#ff6847', '✨', '刚刚加入 Pinpop'
+    '#ff6847', '✨', 'Just joined Pinpop'
   ) on conflict (id) do nothing;
   return new;
 end;
@@ -1214,7 +1214,7 @@ select
   u.id,
   'user_' || left(replace(u.id::text, '-', ''), 8),
   split_part(coalesce(u.email, 'New friend'), '@', 1),
-  '#ff6847', '✨', '刚刚加入 Pinpop'
+  '#ff6847', '✨', 'Just joined Pinpop'
 from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id)
 on conflict do nothing;

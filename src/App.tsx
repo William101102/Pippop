@@ -739,8 +739,8 @@ function App() {
       const icon = L.divIcon({
         className: 'person-pin-shell',
         html: `<div class="person-pin ${mine ? 'mine' : ''} ${live ? 'live' : 'away'}" style="--pin:${color}"><div class="pin-face">${face}</div><b>${safeHtml(p.status_emoji)}</b>${live ? (moving ? `<i class="pin-speed">${safeHtml(moving)}</i>` : '') : `<i>${safeHtml(ago(l.updated_at))}</i>`}${reaction ? `<u class="pin-reaction">${safeHtml(reaction)}</u>` : ''}</div>`,
-        iconSize: [70, 82],
-        iconAnchor: [35, 76],
+        iconSize: [60, 80],
+        iconAnchor: [30, 30],
       });
       const marker = L.marker([l.lat, l.lng], { icon, zIndexOffset: mine ? 1000 : 0 }).addTo(layers.current!);
       if (!mine) marker.on('click', () => { const f = friends.find(x => x.id === p.id); if (f) openFriend(f); });

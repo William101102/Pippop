@@ -251,21 +251,19 @@ button { color: inherit; }
 
 /* Person pins */
 .person-pin-shell { border: 0 !important; background: none !important; }
-.person-pin { position: relative; width: 64px; height: 70px; filter: drop-shadow(0 9px 9px rgba(44,34,71,.26)); }
-/* The pin itself is the clipped teardrop now, so the photo can fill it edge to
-   edge instead of sitting as a small circle inside a flat-color margin. */
-.pin-face { position: absolute; z-index: 2; left: 6px; top: 0; width: 52px; height: 52px; overflow: hidden; box-sizing: border-box; border: 5px solid #fff; border-radius: 50% 50% 50% 10px; background: var(--pin); transform: rotate(-45deg); color: #fff; font-size: 16px; font-weight: 900; }
-/* Counter-rotated and oversized (~sqrt(2)x) so it reads upright and still
-   covers the teardrop's corners after the parent's 45deg rotation. */
-.pin-face-fill { position: absolute; top: 50%; left: 50%; display: grid; place-items: center; width: 145%; height: 145%; transform: translate(-50%, -50%) rotate(45deg); }
+.person-pin { position: relative; width: 60px; height: 80px; filter: drop-shadow(0 9px 9px rgba(44,34,71,.26)); }
+/* A plain circle (not the old teardrop/icon shape), same as the story pins —
+   the photo fills it edge to edge inside a flat-color ring. */
+.pin-face { position: absolute; z-index: 2; left: 4px; top: 4px; width: 52px; height: 52px; overflow: hidden; box-sizing: border-box; border: 5px solid #fff; border-radius: 50%; background: var(--pin); color: #fff; font-size: 16px; font-weight: 900; }
+.pin-face-fill { position: absolute; inset: 0; display: grid; place-items: center; width: 100%; height: 100%; }
 .pin-face-fill img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pin-face-fill .pin-photo { display: block; width: 100%; height: 100%; background-size: cover; background-position: center; background-repeat: no-repeat; }
-.person-pin b { position: absolute; z-index: 4; right: -8px; top: -8px; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(41,25,72,.2); font-size: 12px; }
+.person-pin b { position: absolute; z-index: 4; right: -2px; top: -2px; display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(41,25,72,.2); font-size: 12px; }
 .person-pin::after {
   content: '';
   position: absolute;
-  left: 3px;
-  top: -3px;
+  left: 1px;
+  top: 1px;
   width: 58px;
   height: 58px;
   border: 3px solid #c4bcd0;
@@ -276,7 +274,7 @@ button { color: inherit; }
 .person-pin.away::after { border-color: #c4bcd0; opacity: .9; }
 @keyframes pulse-ring { to { transform: scale(1.55); opacity: 0; } }
 .person-pin.away { filter: drop-shadow(0 6px 7px rgba(44,34,71,.18)) grayscale(.35); opacity: .86; }
-.person-pin.away i, .person-pin i.pin-speed { position: absolute; z-index: 4; left: 50%; bottom: 4px; padding: 2px 7px; border-radius: 9px; background: rgba(38,26,64,.82); color: #fff; box-shadow: 0 2px 6px rgba(38,26,64,.28); font-size: 10px; font-style: normal; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
+.person-pin.away i, .person-pin i.pin-speed { position: absolute; z-index: 4; left: 50%; top: 62px; padding: 2px 7px; border-radius: 9px; background: rgba(38,26,64,.82); color: #fff; box-shadow: 0 2px 6px rgba(38,26,64,.28); font-size: 10px; font-style: normal; font-weight: 800; white-space: nowrap; transform: translateX(-50%); }
 .person-pin i.pin-speed { background: var(--violet); }
 .people-cluster-shell { border: 0 !important; background: none !important; }
 .people-cluster {

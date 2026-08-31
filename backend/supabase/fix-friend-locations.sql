@@ -1,5 +1,5 @@
 -- ============================================================================
--- Fix: friends' locations were never visible ("暂无位置" for everyone).
+-- Fix: friends' locations were never visible ("No location yet" for everyone).
 --
 -- Two separate causes, both server side:
 --

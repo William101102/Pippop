@@ -29,7 +29,7 @@ begin
     coalesce(chosen_name, split_part(coalesce(new.email, safe_username), '@', 1)),
     '#ff6847',
     '✨',
-    '刚刚加入 Pinpop'
+    'Just joined Pinpop'
   ) on conflict (id) do nothing;
   return new;
 end;
@@ -48,7 +48,7 @@ select
   split_part(coalesce(u.email, 'New friend'), '@', 1),
   '#ff6847',
   '✨',
-  '刚刚加入 Pinpop'
+  'Just joined Pinpop'
 from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id)
 on conflict do nothing;
