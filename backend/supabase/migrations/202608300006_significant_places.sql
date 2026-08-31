@@ -17,6 +17,7 @@ create index if not exists location_history_user_time_idx
   on public.location_history (user_id, recorded_at desc);
 
 alter table public.location_history enable row level security;
+drop policy if exists "manage own location history" on public.location_history;
 create policy "manage own location history"
   on public.location_history for all
   using (auth.uid() = user_id)
@@ -41,6 +42,7 @@ create table if not exists public.significant_places (
 );
 
 alter table public.significant_places enable row level security;
+drop policy if exists "manage own significant places" on public.significant_places;
 create policy "manage own significant places"
   on public.significant_places for all
   using (auth.uid() = user_id)

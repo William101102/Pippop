@@ -113,30 +113,43 @@ drop policy if exists "update own location" on public.locations;
 create policy "update own location" on public.locations for update
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "manage own privacy" on public.location_privacy;
 create policy "manage own privacy" on public.location_privacy for all
   using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+drop policy if exists "read own history" on public.location_history;
 create policy "read own history" on public.location_history for select using (auth.uid() = user_id);
+drop policy if exists "write own history" on public.location_history;
 create policy "write own history" on public.location_history for insert with check (auth.uid() = user_id);
+drop policy if exists "delete own history" on public.location_history;
 create policy "delete own history" on public.location_history for delete using (auth.uid() = user_id);
+drop policy if exists "authenticated read places" on public.places;
 create policy "authenticated read places" on public.places for select using (auth.role() = 'authenticated');
+drop policy if exists "read visible visits" on public.visits;
 create policy "read visible visits" on public.visits for select using (
   auth.uid() = user_id or (visibility = 'friends' and exists (
     select 1 from public.friendships f where f.status = 'accepted' and
       ((f.requester_id = auth.uid() and f.addressee_id = visits.user_id) or
        (f.addressee_id = auth.uid() and f.requester_id = visits.user_id)))));
+drop policy if exists "manage own visits" on public.visits;
 create policy "manage own visits" on public.visits for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "read friend highlights" on public.highlights;
 create policy "read friend highlights" on public.highlights for select using (
   auth.uid() = user_id or (expires_at > now() and exists (
     select 1 from public.friendships f where f.status = 'accepted' and
       ((f.requester_id = auth.uid() and f.addressee_id = highlights.user_id) or
        (f.addressee_id = auth.uid() and f.requester_id = highlights.user_id)))));
+drop policy if exists "manage own highlights" on public.highlights;
 create policy "manage own highlights" on public.highlights for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "manage own blocks" on public.blocks;
 create policy "manage own blocks" on public.blocks for all using (auth.uid() = blocker_id) with check (auth.uid() = blocker_id);
+drop policy if exists "see own whats up" on public.whats_up_requests;
 create policy "see own whats up" on public.whats_up_requests for select using (auth.uid() in (sender_id, recipient_id));
+drop policy if exists "send whats up to friend" on public.whats_up_requests;
 create policy "send whats up to friend" on public.whats_up_requests for insert with check (
   auth.uid() = sender_id and exists (select 1 from public.friendships f where f.status = 'accepted' and
     ((f.requester_id = auth.uid() and f.addressee_id = recipient_id) or
      (f.addressee_id = auth.uid() and f.requester_id = recipient_id))));
+drop policy if exists "answer whats up" on public.whats_up_requests;
 create policy "answer whats up" on public.whats_up_requests for update
   using (auth.uid() = recipient_id) with check (auth.uid() = recipient_id);
 
