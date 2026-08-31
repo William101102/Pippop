@@ -172,7 +172,7 @@ export function detectOvernightPlaces(points: VisitPoint[]): SignificantPlace[] 
       kind: "overnight" as const,
       lat: s.lat,
       lng: s.lng,
-      label: "过夜地点",
+      label: "Overnight spot",
       score: s.days.length,
     }))
     .filter((p) => p.score > 0)

@@ -905,28 +905,77 @@ $$;
 -- (throwing something at a friend keeps the streak alive too — Snapchat's
 -- streaks count any snap, not just a typed one) so the count cannot drift
 -- from actual activity, and kept symmetric by living on the pair.
+--
+-- Missing exactly one day is forgivable: the pair gets one "repair" shot —
+-- three consecutive days back and the streak is restored as if it never
+-- broke (streak_grace_value + 3), same generous-but-bounded spirit as most
+-- big social apps' streak-restore mechanics. Missing more than one day, or
+-- missing again mid-repair, is a clean reset — no repair chains.
 -- ----------------------------------------------------------------------------
+alter table public.friendships add column if not exists streak_grace_value integer;
+alter table public.friendships add column if not exists streak_grace_days integer not null default 0;
+
 create or replace function public.bump_friend_streak(p_a uuid, p_b uuid)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   today date := (now() at time zone 'utc')::date;
+  rec record;
+  gap integer;
+  new_streak integer;
+  new_grace_value integer;
+  new_grace_days integer;
 begin
-  update public.friendships f
-     set streak_days = case
-           when f.last_interaction_on = today then f.streak_days
-           when f.last_interaction_on = today - 1 then f.streak_days + 1
-           else 1
-         end,
-         last_interaction_on = today
-   where f.status = 'accepted'
-     and ((f.requester_id = p_a and f.addressee_id = p_b)
-       or (f.addressee_id = p_a and f.requester_id = p_b));
+  for rec in
+    select * from public.friendships f
+     where f.status = 'accepted'
+       and ((f.requester_id = p_a and f.addressee_id = p_b)
+         or (f.addressee_id = p_a and f.requester_id = p_b))
+     for update
+  loop
+    if rec.last_interaction_on = today then
+      continue; -- already counted today
+    end if;
 
-  update public.friendships f
-     set longest_streak = f.streak_days
-   where f.streak_days > f.longest_streak
-     and ((f.requester_id = p_a and f.addressee_id = p_b)
-       or (f.addressee_id = p_a and f.requester_id = p_b));
+    gap := case when rec.last_interaction_on is null then null else today - rec.last_interaction_on end;
+
+    if gap = 1 then
+      -- Back-to-back day: normal continuation, and — if a repair is already
+      -- in progress — one more step toward completing it.
+      new_streak := coalesce(rec.streak_days, 0) + 1;
+      if rec.streak_grace_value is not null then
+        new_grace_days := rec.streak_grace_days + 1;
+        if new_grace_days >= 3 then
+          new_streak := rec.streak_grace_value + new_grace_days;
+          new_grace_value := null;
+          new_grace_days := 0;
+        else
+          new_grace_value := rec.streak_grace_value;
+        end if;
+      else
+        new_grace_value := null;
+        new_grace_days := 0;
+      end if;
+    elsif gap = 2 then
+      -- Exactly one day missed: start the one-time repair window.
+      new_grace_value := coalesce(rec.streak_days, 0);
+      new_grace_days := 1;
+      new_streak := 1;
+    else
+      -- Missed more than one day (or first-ever interaction, or a repair
+      -- that itself lapsed): clean reset, no repair eligibility.
+      new_grace_value := null;
+      new_grace_days := 0;
+      new_streak := 1;
+    end if;
+
+    update public.friendships f
+       set streak_days = new_streak,
+           streak_grace_value = new_grace_value,
+           streak_grace_days = new_grace_days,
+           last_interaction_on = today,
+           longest_streak = greatest(f.longest_streak, new_streak)
+     where f.id = rec.id;
+  end loop;
 end;
 $$;
 
@@ -1287,4 +1336,8 @@ union all select 'redeem_invite()',
 union all select 'reaction streak trigger',
        case when exists (select 1 from pg_trigger
          where tgname = 'reactions_touch_streak' and not tgisinternal) then 'ok' else 'MISSING' end
+union all select 'streak repair columns',
+       case when exists (select 1 from information_schema.columns
+         where table_schema = 'public' and table_name = 'friendships' and column_name = 'streak_grace_value')
+       then 'ok' else 'MISSING' end
 order by item;

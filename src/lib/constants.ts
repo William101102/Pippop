@@ -1,11 +1,11 @@
 import type { GhostMode } from '../types';
 
 export const STATUSES = [
-  { emoji: '🏠', text: '在家' },
-  { emoji: '💼', text: '工作中' },
-  { emoji: '🍔', text: '吃饭中' },
-  { emoji: '🎧', text: '放松中' },
-  { emoji: '🚶', text: '散步中' },
+  { emoji: '🏠', text: 'At home' },
+  { emoji: '💼', text: 'Working' },
+  { emoji: '🍔', text: 'Eating' },
+  { emoji: '🎧', text: 'Chilling' },
+  { emoji: '🚶', text: 'Out for a walk' },
 ] as const;
 
 export const PALETTE = [
@@ -25,7 +25,7 @@ export const SHEET_OFFSET_PX = 150;
 export const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
 export const GHOST_MODES: { value: GhostMode; title: string; detail: string; icon: string }[] = [
-  { value: 'precise', title: '精确位置', detail: '实时显示你的准确位置', icon: '◎' },
-  { value: 'blurred', title: '模糊位置', detail: '随机偏移约 0.2–1.2 km', icon: '◌' },
-  { value: 'frozen', title: '冻结位置', detail: '停留在上一次的位置', icon: '❄' },
+  { value: 'precise', title: 'Precise', detail: 'Shows your exact location live', icon: '◎' },
+  { value: 'blurred', title: 'Blurred', detail: 'Randomly offset by about 0.2–1.2 km', icon: '◌' },
+  { value: 'frozen', title: 'Frozen', detail: 'Stuck at your last shared spot', icon: '❄' },
 ];

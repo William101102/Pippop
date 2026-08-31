@@ -19,7 +19,7 @@ interface NormalizedAvatar {
 async function normalizeAvatar(file: File): Promise<NormalizedAvatar> {
   const fallback = (): NormalizedAvatar => {
     if (!UPLOAD_TYPES.has(file.type)) {
-      throw new Error('这张图片浏览器读不出来，换一张 JPG 或 PNG 试试');
+      throw new Error('This browser can\'t read that image — try a JPG or PNG instead');
     }
     const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
     return { body: file, contentType: file.type, extension };
@@ -57,18 +57,18 @@ async function normalizeAvatar(file: File): Promise<NormalizedAvatar> {
 function describeUploadError(error: { message?: string; statusCode?: string }) {
   const message = error.message || '';
   if (/bucket not found/i.test(message)) {
-    return '头像存储还没建好：请在 Supabase 里执行 202608300002_profile_avatars.sql';
+    return 'Avatar storage isn\'t set up yet — run 202608300002_profile_avatars.sql in Supabase';
   }
   if (/row-level security|policy/i.test(message)) {
-    return '没有上传权限：请确认 202608300002_profile_avatars.sql 已执行';
+    return 'No upload permission — make sure 202608300002_profile_avatars.sql has been run';
   }
   if (/mime|content type/i.test(message)) {
-    return '这个图片格式不被支持，换一张 JPG 或 PNG 试试';
+    return 'That image format isn\'t supported — try a JPG or PNG instead';
   }
   if (/exceeded|too large|payload/i.test(message)) {
-    return '图片太大了，换一张小一点的';
+    return 'That image is too large — try a smaller one';
   }
-  return message || '头像上传失败，请稍后再试';
+  return message || 'Avatar upload failed — please try again later';
 }
 
 function looksLikeImage(file: File) {
@@ -78,8 +78,8 @@ function looksLikeImage(file: File) {
 }
 
 export async function uploadProfileAvatar(userId: string, file: File): Promise<string> {
-  if (!looksLikeImage(file)) throw new Error('请选择一张图片');
-  if (file.size > MAX_AVATAR_BYTES) throw new Error('图片不能超过 12 MB');
+  if (!looksLikeImage(file)) throw new Error('Please choose an image');
+  if (file.size > MAX_AVATAR_BYTES) throw new Error('Image can\'t exceed 12 MB');
 
   const { body, contentType, extension } = await normalizeAvatar(file);
   const path = `${userId}/avatar-${Date.now()}.${extension}`;
@@ -95,7 +95,7 @@ export async function uploadProfileAvatar(userId: string, file: File): Promise<s
   const { error: updateError } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', userId);
   if (updateError) {
     await supabase.storage.from('avatars').remove([path]).catch(() => undefined);
-    throw new Error(updateError.message || '头像已上传但没能保存到资料');
+    throw new Error(updateError.message || 'Avatar uploaded but couldn\'t be saved to your profile');
   }
   return avatarUrl;
 }

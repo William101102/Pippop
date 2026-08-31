@@ -55,14 +55,14 @@ export function useMessages(meId: string | undefined) {
   const closeChat = useCallback(() => setChatWith(null), []);
 
   const send = useCallback(async (friendId: string, body: string) => {
-    if (!meId) return { error: '未登录' };
+    if (!meId) return { error: 'Not signed in' };
     const result = await sendMessage(meId, friendId, body);
     if (!result.error) await reloadThread(friendId).catch(() => undefined);
     return result;
   }, [meId, reloadThread]);
 
   const wave = useCallback(async (friendId: string) => {
-    if (!meId) return { error: '未登录' };
+    if (!meId) return { error: 'Not signed in' };
     const result = await sendWave(meId, friendId);
     if (!result.error) await reloadThread(friendId).catch(() => undefined);
     return result;
@@ -76,7 +76,7 @@ export function useMessages(meId: string | undefined) {
   }, [meId, reloadThread]);
 
   const whatsUp = useCallback(async (friendId: string) => {
-    if (!meId) return { error: '未登录' };
+    if (!meId) return { error: 'Not signed in' };
     const result = await sendWhatsUp(meId, friendId);
     if (!result.error) await reloadThread(friendId).catch(() => undefined);
     return result;

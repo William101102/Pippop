@@ -14,7 +14,7 @@ export function CompleteProfileScreen({ onComplete }: Props) {
   async function submit() {
     const u = username.trim().toLowerCase();
     if (!USERNAME_RE.test(u)) {
-      setMessage('ID 只能用小写字母、数字、下划线，3-20 位');
+      setMessage('ID can only use lowercase letters, numbers, underscores, 3-20 characters');
       return;
     }
     setBusy(true);
@@ -27,12 +27,12 @@ export function CompleteProfileScreen({ onComplete }: Props) {
     <main className="auth-shell">
       <section className="auth-card" style={{ maxWidth: 420 }}>
         <div className="brand brand-large"><span>pin</span>pop<i>●</i></div>
-        <h2>还差一步</h2>
-        <p className="muted">给自己起个 ID 和昵称</p>
-        <label>你的 ID<input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="例如 xiaoming_01" /></label>
-        <label>昵称<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="好友会看到的名字" onKeyDown={(e) => e.key === 'Enter' && submit()} /></label>
+        <h2>One more step</h2>
+        <p className="muted">Pick an ID and a display name</p>
+        <label>Your ID<input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. alex_01" /></label>
+        <label>Display name<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="What friends will see" onKeyDown={(e) => e.key === 'Enter' && submit()} /></label>
         {message && <div className="form-message">{message}</div>}
-        <button className="primary wide" disabled={busy} onClick={submit}>{busy ? '请稍候…' : '进入 Pinpop'}</button>
+        <button className="primary wide" disabled={busy} onClick={submit}>{busy ? 'Please wait…' : 'Enter Pinpop'}</button>
       </section>
     </main>
   );

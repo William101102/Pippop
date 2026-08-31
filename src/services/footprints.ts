@@ -6,7 +6,7 @@ const MISSING_FUNCTION = '42883';
 
 function explain(code: string | undefined) {
   if (code === MISSING_FUNCTION) {
-    return new Error('服务端还没有安装足迹功能，请先运行 setup.sql');
+    return new Error('The footprints feature is not installed on the server yet — run setup.sql first');
   }
   return null;
 }

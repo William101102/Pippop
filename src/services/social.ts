@@ -37,20 +37,20 @@ export interface Throwable { emoji: string; label: string }
 /** The full "throw something at a friend" catalog — reuses map_reactions as-is
  *  (the emoji column is free text), so growing this list needs no schema change. */
 export const THROWABLES: Throwable[] = [
-  { emoji: '🎂', label: '蛋糕' },
-  { emoji: '🎉', label: '庆祝' },
-  { emoji: '🌹', label: '玫瑰' },
-  { emoji: '❤️', label: '爱心' },
-  { emoji: '🍕', label: '披萨' },
-  { emoji: '☕', label: '续命' },
-  { emoji: '🍺', label: '干杯' },
-  { emoji: '🎁', label: '礼物' },
-  { emoji: '💦', label: '水球' },
-  { emoji: '🔥', label: '火' },
-  { emoji: '😂', label: '笑哭' },
-  { emoji: '👀', label: '看到你' },
-  { emoji: '😴', label: '困' },
-  { emoji: '🤙', label: '打招呼' },
+  { emoji: '🎂', label: 'Cake' },
+  { emoji: '🎉', label: 'Cheers' },
+  { emoji: '🌹', label: 'Rose' },
+  { emoji: '❤️', label: 'Love' },
+  { emoji: '🍕', label: 'Pizza' },
+  { emoji: '☕', label: 'Coffee' },
+  { emoji: '🍺', label: 'Beer' },
+  { emoji: '🎁', label: 'Gift' },
+  { emoji: '💦', label: 'Splash' },
+  { emoji: '🔥', label: 'Fire' },
+  { emoji: '😂', label: 'LOL' },
+  { emoji: '👀', label: 'Saw you' },
+  { emoji: '😴', label: 'Sleepy' },
+  { emoji: '🤙', label: 'Hey' },
 ];
 
 export const REACTION_EMOJI = THROWABLES.map((t) => t.emoji);
@@ -61,7 +61,7 @@ export async function sendReaction(meId: string, targetId: string, emoji: string
     .insert({ sender_id: meId, target_id: targetId, emoji });
   if (error) {
     if (error.code === MISSING_TABLE) {
-      throw new Error('服务端还没有安装表情功能，请先运行 setup.sql');
+      throw new Error('The reactions feature is not installed on the server yet — run setup.sql first');
     }
     throw error;
   }

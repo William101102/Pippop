@@ -16,7 +16,7 @@ export interface GeofenceTransition {
  * Tracks which of the user's own significant places they are currently inside.
  *
  * This runs on the mover's device on purpose: significant places are private,
- * so nobody else's client could match a coordinate to "公司" in the first place.
+ * so nobody else's client could match a coordinate to "Office" in the first place.
  * The hysteresis between the two radii is what stops a stationary phone with a
  * drifting fix from emitting arrive/leave repeatedly.
  */

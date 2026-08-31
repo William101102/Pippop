@@ -4,7 +4,7 @@ import type { SignificantPlace } from './places';
 
 const HOME: SignificantPlace = {
   kind: 'overnight',
-  label: '家',
+  label: 'Home',
   lat: 37.3317,
   lng: -121.8929,
   score: 3,
@@ -12,7 +12,7 @@ const HOME: SignificantPlace = {
 
 const OFFICE: SignificantPlace = {
   kind: 'overnight',
-  label: '公司',
+  label: 'Office',
   lat: 37.3917,
   lng: -121.8929,
   score: 2,

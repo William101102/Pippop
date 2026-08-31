@@ -13,8 +13,8 @@ export async function loadThread(meId: string, friendId: string) {
 
 export async function sendMessage(senderId: string, recipientId: string, body: string, kind: MessageKind = 'text') {
   const text = body.trim();
-  if (!text) return { error: '消息不能为空' };
-  if (text.length > 2000) return { error: '消息太长了，最多 2000 字' };
+  if (!text) return { error: 'Message cannot be empty' };
+  if (text.length > 2000) return { error: 'Message is too long — 2000 characters max' };
   const { error } = await supabase
     .from('messages')
     .insert({ sender_id: senderId, recipient_id: recipientId, body: text, kind });
@@ -42,7 +42,7 @@ export async function sendWhatsUp(senderId: string, recipientId: string) {
     .insert({ sender_id: senderId, recipient_id: recipientId });
   // 42P01 = table missing (migration not applied yet); the message still works.
   if (error && error.code !== '42P01') return { error: error.message };
-  return sendMessage(senderId, recipientId, "👀 What's Up？在干什么呀", 'whats_up');
+  return sendMessage(senderId, recipientId, "👀 What's Up? What are you up to?", 'whats_up');
 }
 
 export async function markThreadRead(meId: string, friendId: string) {

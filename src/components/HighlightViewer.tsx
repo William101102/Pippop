@@ -13,9 +13,9 @@ interface Props {
 
 function ago(iso: string) {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  return `${Math.floor(mins / 60)} 小时前`;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.floor(mins / 60)}h ago`;
 }
 
 export function HighlightViewer({ author, isMine, highlights, onClose, onDelete }: Props) {
@@ -42,11 +42,11 @@ export function HighlightViewer({ author, isMine, highlights, onClose, onDelete 
           <Avatar profile={author} />
           <div><b>{author.display_name}</b><small>{ago(current.created_at)}</small></div>
           {isMine && (
-            <button type="button" className="highlight-delete" onClick={() => onDelete(current.id)} aria-label="删除动态">
+            <button type="button" className="highlight-delete" onClick={() => onDelete(current.id)} aria-label="Delete story">
               <Trash2 size={16} />
             </button>
           )}
-          <button type="button" className="highlight-close" onClick={onClose} aria-label="关闭"><X size={20} /></button>
+          <button type="button" className="highlight-close" onClick={onClose} aria-label="Close"><X size={20} /></button>
         </div>
 
         <div className="highlight-media">
@@ -55,8 +55,8 @@ export function HighlightViewer({ author, isMine, highlights, onClose, onDelete 
           ) : (
             <div className="highlight-media-fallback">{current.body || '✨'}</div>
           )}
-          <button type="button" className="highlight-tap-zone left" aria-label="上一条" onClick={() => step(-1)} />
-          <button type="button" className="highlight-tap-zone right" aria-label="下一条" onClick={() => step(1)} />
+          <button type="button" className="highlight-tap-zone left" aria-label="Previous" onClick={() => step(-1)} />
+          <button type="button" className="highlight-tap-zone right" aria-label="Next" onClick={() => step(1)} />
         </div>
         {current.media_url && current.body && <p className="highlight-caption">{current.body}</p>}
       </div>

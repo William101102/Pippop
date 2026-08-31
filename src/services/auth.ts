@@ -5,12 +5,12 @@ import type { Profile } from '../types';
 
 export async function signInWithPassword(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: error.message === 'Invalid login credentials' ? '邮箱或密码不对，没有账号请先注册' : error.message };
+  if (error) return { error: error.message === 'Invalid login credentials' ? 'Wrong email or password — sign up first if you don\'t have an account' : error.message };
 
   const { data: prof } = await supabase.from('profiles').select('id').eq('id', data.user!.id).maybeSingle();
   if (!prof) {
     await supabase.auth.signOut();
-    return { error: '这个邮箱还没注册，请先在「注册」里创建账号', needsSignup: true, email };
+    return { error: 'This email isn\'t registered yet — create an account under "Sign up" first', needsSignup: true, email };
   }
   return { session: data.session };
 }
@@ -23,11 +23,11 @@ export async function signUp(input: {
 }) {
   const { email, password, username, displayName } = input;
   const { data: taken } = await supabase.from('profiles').select('id').eq('username', username).maybeSingle();
-  if (taken) return { error: '这个 ID 已经被占用了，换一个试试' };
+  if (taken) return { error: 'That ID is already taken — try another one' };
 
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) return { error: error.message };
-  if (!data.session) return { error: '注册成功！请去邮箱点确认链接后再登录。', needsEmailConfirm: true, email };
+  if (!data.session) return { error: 'Signed up! Please check your email to confirm before logging in.', needsEmailConfirm: true, email };
 
   const color = colorFor(username);
   const { error: profErr } = await supabase.from('profiles').insert({
@@ -38,7 +38,7 @@ export async function signUp(input: {
   });
   if (profErr) {
     await supabase.auth.signOut();
-    return { error: profErr.code === '23505' ? '这个 ID 已经被占用了，换一个试试' : profErr.message };
+    return { error: profErr.code === '23505' ? 'That ID is already taken — try another one' : profErr.message };
   }
   return { session: data.session };
 }

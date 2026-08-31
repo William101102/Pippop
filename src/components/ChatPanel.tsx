@@ -41,7 +41,7 @@ export function ChatPanel({ friend, messages, meId, onClose, onSend }: Props) {
         <div ref={endRef} />
       </div>
       <div className="chat-input">
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="发条消息…" onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Send a message…" onKeyDown={(e) => e.key === 'Enter' && submit()} />
         <button type="button" onClick={submit}><Send size={18} /></button>
       </div>
     </aside>

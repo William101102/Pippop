@@ -18,7 +18,7 @@ export async function completeProfile(userId: string, username: string, displayN
     avatar_color: color.ring,
   });
   if (error) {
-    if (error.code === '23505') return { error: '这个 ID 已经被占用了，换一个试试' };
+    if (error.code === '23505') return { error: 'That ID is already taken — try another one' };
     return { error: error.message };
   }
   return { profile: await fetchProfile(userId) };
@@ -147,7 +147,7 @@ export async function deleteMyAccount() {
   const { error } = await supabase.rpc('delete_my_account');
   if (error) {
     if (error.code === '42883') {
-      throw new Error('服务端还没有安装账号删除功能，请先运行 setup.sql');
+      throw new Error('The account-deletion feature is not installed on the server yet — run setup.sql first');
     }
     throw error;
   }

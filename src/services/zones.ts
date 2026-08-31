@@ -33,7 +33,7 @@ export async function createZone(
     .select('*')
     .single();
   if (error) {
-    if (error.code === MISSING_TABLE) throw new Error('地标功能还没上线：请先运行 backend/supabase/setup.sql');
+    if (error.code === MISSING_TABLE) throw new Error('Zenlands aren\'t live yet — run backend/supabase/setup.sql first');
     throw error;
   }
   return data as Zone;

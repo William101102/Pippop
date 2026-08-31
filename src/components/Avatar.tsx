@@ -12,7 +12,7 @@ export function Avatar({ profile, className = '', showStatus = false }: AvatarPr
   return (
     <span className={`avatar-photo ${className}`} style={style}>
       {profile.avatar_url ? (
-        <img src={profile.avatar_url} alt={`${profile.display_name}的头像`} referrerPolicy="no-referrer" />
+        <img src={profile.avatar_url} alt={`${profile.display_name}'s avatar`} referrerPolicy="no-referrer" />
       ) : (
         <span>{profile.display_name.trim().slice(0, 1).toUpperCase()}</span>
       )}

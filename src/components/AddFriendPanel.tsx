@@ -33,21 +33,21 @@ export function AddFriendPanel({
 
   async function shareSelf() {
     const text = inviteText(me.username, me.display_name, inviteToken);
-    const result = await shareText('Pinpop 好友邀请', text, text.split('\n').pop() || '');
-    onNotify(result === 'shared' ? '已分享你的邀请' : '邀请链接已复制，发给朋友吧！对方点开一步就能加上你');
+    const result = await shareText('Pinpop friend invite', text, text.split('\n').pop() || '');
+    onNotify(result === 'shared' ? 'Your invite was shared' : 'Invite link copied — send it to a friend! One tap and they\'re added');
   }
 
   return (
     <aside className="sheet sheet-full">
       <div className="sheet-head">
-        <div><div className="eyebrow">添加好友</div><h2>搜索 ID 或名字</h2></div>
+        <div><div className="eyebrow">Add friend</div><h2>Search by ID or name</h2></div>
         <button className="close-button" type="button" onClick={onClose}><X size={19} /></button>
       </div>
       <button type="button" className="my-id-card" onClick={shareSelf}>
-        <div><div className="eyebrow">你的 ID</div><strong>@{me.username}</strong></div>
-        <span>分享给朋友 →</span>
+        <div><div className="eyebrow">Your ID</div><strong>@{me.username}</strong></div>
+        <span>Share with friends →</span>
       </button>
-      <div className="search"><Search size={18} /><input placeholder="输入好友 ID 或名字" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+      <div className="search"><Search size={18} /><input placeholder="Enter a friend's ID or name" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
       <div className="friend-list">
         {results.map((p) => {
           const already = friendIds.has(p.id);
@@ -56,13 +56,13 @@ export function AddFriendPanel({
             <div className="friend-row static" key={p.id}>
               <span className="avatar" style={{ background: p.avatar_color }}>{initials(p.display_name)}</span>
               <div><b>{p.display_name}</b><small>@{p.username}</small></div>
-              {already ? <span className="tag">已是好友</span> : sent ? <span className="tag">已发送</span> : (
-                <button type="button" className="tiny solid" onClick={() => onSendRequest(p.id).catch((e) => onNotify(String(e)))}>＋ 添加</button>
+              {already ? <span className="tag">Friends</span> : sent ? <span className="tag">Sent</span> : (
+                <button type="button" className="tiny solid" onClick={() => onSendRequest(p.id).catch((e) => onNotify(String(e)))}>＋ Add</button>
               )}
             </div>
           );
         })}
-        {query && !results.length && <div className="empty-hint">没找到「{query}」</div>}
+        {query && !results.length && <div className="empty-hint">No results for "{query}"</div>}
       </div>
     </aside>
   );

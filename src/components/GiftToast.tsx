@@ -16,7 +16,7 @@ export function GiftToast({ sender, emoji, label }: Props) {
       <Avatar profile={sender} className="gift-toast-avatar" />
       <div className="gift-toast-text">
         <b>{sender.display_name}</b>
-        <small>给你扔了个 {emoji}{label ? ` ${label}` : ''}</small>
+        <small>threw you a {emoji}{label ? ` ${label}` : ''}</small>
       </div>
       <span className="gift-toast-spark s1">✨</span>
       <span className="gift-toast-spark s2">✨</span>

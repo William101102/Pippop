@@ -32,6 +32,9 @@ export interface Friend extends Profile {
   /** UTC date (YYYY-MM-DD) the streak was last bumped — used to tell a live
    *  streak from one the server just has not zeroed out yet. */
   last_interaction_on?: string | null;
+  /** Set while a missed day is mid-repair — see bump_friend_streak(). */
+  streak_grace_value?: number | null;
+  streak_grace_days?: number;
   is_best_friend?: boolean;
 }
 
@@ -91,6 +94,8 @@ export interface FriendshipRow {
   status: 'pending' | 'accepted' | 'declined';
   streak_days?: number;
   longest_streak?: number;
+  streak_grace_value?: number | null;
+  streak_grace_days?: number;
   last_interaction_on?: string | null;
 }
 
@@ -152,7 +157,7 @@ export interface Highlight {
 
 /** A "Zenland": a friend-visible, hand-named place (unlike the private,
  *  auto-detected significant places). Friends see the label so an
- *  arrive/leave notice reads as "到了 健身房" instead of a private clue. */
+ *  arrive/leave notice reads as "arrived at the Gym" instead of a private clue. */
 export interface Zone {
   id: string;
   owner_id: string;

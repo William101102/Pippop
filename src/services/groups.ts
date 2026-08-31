@@ -47,7 +47,7 @@ export async function createGroup(ownerId: string, name: string, memberIds: stri
     .select('*')
     .single();
   if (error) {
-    if (error.code === MISSING_TABLE) throw new Error('群聊功能还没上线：请先运行 backend/supabase/setup.sql');
+    if (error.code === MISSING_TABLE) throw new Error('Group chat isn\'t live yet — run backend/supabase/setup.sql first');
     throw error;
   }
   const allIds = [...new Set([ownerId, ...memberIds])];
@@ -70,8 +70,8 @@ export async function loadGroupThread(groupId: string): Promise<Message[]> {
 
 export async function sendGroupMessage(senderId: string, groupId: string, body: string) {
   const text = body.trim();
-  if (!text) return { error: '消息不能为空' };
-  if (text.length > 2000) return { error: '消息太长了，最多 2000 字' };
+  if (!text) return { error: 'Message cannot be empty' };
+  if (text.length > 2000) return { error: 'Message is too long — 2000 characters max' };
   const { error } = await supabase
     .from('messages')
     .insert({ sender_id: senderId, group_id: groupId, body: text, kind: 'text' });

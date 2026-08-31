@@ -22,14 +22,14 @@ export function AuthScreen({ onLogin, onRegister, onPreview, initialSignup = fal
 
   async function submit() {
     if (!isConfigured) {
-      setMessage('尚未配置 Supabase。可先进入预览模式。');
+      setMessage('Supabase isn\'t configured yet. You can try preview mode instead.');
       return;
     }
     setBusy(true);
     setMessage('');
     if (signup) {
       if (!USERNAME_RE.test(username.trim().toLowerCase())) {
-        setMessage('ID 只能用小写字母、数字、下划线，3-20 位');
+        setMessage('ID can only use lowercase letters, numbers, underscores, 3-20 characters');
         setBusy(false);
         return;
       }
@@ -64,27 +64,27 @@ export function AuthScreen({ onLogin, onRegister, onPreview, initialSignup = fal
     <main className="auth-shell">
       <section className="auth-copy">
         <div className="brand brand-large"><span>pin</span>pop<i>●</i></div>
-        <h1>你的朋友，<br />就在地图上。</h1>
-        <p>不用问“你在哪”。打开地图，看看大家正在做什么。</p>
+        <h1>Your friends,<br />right on the map.</h1>
+        <p>No need to ask "where are you". Open the map and see what everyone's up to.</p>
         <div className="orbit orbit-one" /><div className="orbit orbit-two" />
       </section>
       <section className="auth-card">
-        <div className="eyebrow">欢迎来到 PINPOP</div>
-        <h2>{signup ? '创建你的世界' : '再次见到你真好'}</h2>
-        <p className="muted">{signup ? '注册后添加朋友，一起点亮地图。' : '登录后继续看看朋友们在哪里。'}</p>
-        <label>邮箱<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" /></label>
-        <label>密码<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="至少 6 位" onKeyDown={(e) => e.key === 'Enter' && submit()} /></label>
+        <div className="eyebrow">WELCOME TO PINPOP</div>
+        <h2>{signup ? 'Create your world' : 'Good to see you again'}</h2>
+        <p className="muted">{signup ? 'Sign up, add friends, and light up the map together.' : 'Log in to see where your friends are.'}</p>
+        <label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" /></label>
+        <label>Password<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" onKeyDown={(e) => e.key === 'Enter' && submit()} /></label>
         {signup && <>
-          <label>你的 ID<input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="例如 xiaoming_01" /></label>
-          <label>昵称<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="好友会看到的名字" onKeyDown={(e) => e.key === 'Enter' && submit()} /></label>
+          <label>Your ID<input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. alex_01" /></label>
+          <label>Display name<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="What friends will see" onKeyDown={(e) => e.key === 'Enter' && submit()} /></label>
         </>}
         {message && <div className="form-message">{message}</div>}
-        <button className="primary wide" disabled={busy} onClick={submit}>{busy ? '请稍候…' : signup ? '注册' : '登录'}</button>
+        <button className="primary wide" disabled={busy} onClick={submit}>{busy ? 'Please wait…' : signup ? 'Sign up' : 'Log in'}</button>
         <button className="text-button" type="button" onClick={() => { setSignup(!signup); setMessage(''); }}>
-          {signup ? '已经有账号？登录' : '第一次来？创建账号'}
+          {signup ? 'Already have an account? Log in' : 'First time here? Create an account'}
         </button>
-        <div className="rule"><span>或者</span></div>
-        <button className="preview-button" type="button" onClick={onPreview}><Sparkles size={17} /> 先看看新版长什么样</button>
+        <div className="rule"><span>or</span></div>
+        <button className="preview-button" type="button" onClick={onPreview}><Sparkles size={17} /> See what's new first</button>
       </section>
     </main>
   );

@@ -5,7 +5,7 @@ import type { Friend, FriendRequest, FriendshipRow, LiveLocation, Profile } from
 /**
  * friend_locations applies Ghost Mode masking, so it is the preferred source.
  * A misconfigured view returns zero rows rather than an error though, which used
- * to leave every friend stuck on "暂无位置", so fall back to the table for
+ * to leave every friend stuck on "No location yet", so fall back to the table for
  * anyone the view omitted. That cannot leak masked coordinates: the table's
  * select policy only exposes friends who are in 'precise' mode anyway.
  */
@@ -61,21 +61,22 @@ export async function loadFriendsBundle(meId: string) {
       loadBestFriendIds(meId),
     ]);
     // The streak lives on the friendship row, which is already loaded above.
-    const streakByFriend = new Map<string, number>();
-    const lastInteractionByFriend = new Map<string, string | null>();
+    const streakByFriend = new Map<string, FriendshipRow>();
     for (const rel of accepted as FriendshipRow[]) {
       const other = rel.requester_id === meId ? rel.addressee_id : rel.requester_id;
-      streakByFriend.set(other, rel.streak_days ?? 0);
-      lastInteractionByFriend.set(other, rel.last_interaction_on ?? null);
+      streakByFriend.set(other, rel);
     }
     friends = ((profiles || []) as Profile[]).map((p) => {
       const location = locations.find((l) => l.user_id === p.id) || null;
+      const rel = streakByFriend.get(p.id);
       return {
         ...p,
         location,
         ghost_mode: location?.privacy_mode,
-        streak_days: streakByFriend.get(p.id) ?? 0,
-        last_interaction_on: lastInteractionByFriend.get(p.id) ?? null,
+        streak_days: rel?.streak_days ?? 0,
+        last_interaction_on: rel?.last_interaction_on ?? null,
+        streak_grace_value: rel?.streak_grace_value ?? null,
+        streak_grace_days: rel?.streak_grace_days ?? 0,
         is_best_friend: bestFriendIds.has(p.id),
       };
     });

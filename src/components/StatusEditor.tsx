@@ -18,7 +18,7 @@ export function StatusEditor({ profile, onSave }: Props) {
   const dirty = emoji !== profile.status_emoji || text !== profile.status_text;
 
   async function save() {
-    if (!text.trim()) { setMessage('写一句你在干什么吧'); return; }
+    if (!text.trim()) { setMessage('Write a line about what you\'re up to'); return; }
     setBusy(true);
     setMessage('');
     const result = await onSave(emoji, text.trim());
@@ -28,7 +28,7 @@ export function StatusEditor({ profile, onSave }: Props) {
 
   return (
     <div className="status-editor">
-      <div className="eyebrow">此刻状态</div>
+      <div className="eyebrow">Status right now</div>
       <div className="emoji-row">
         {EMOJI_CHOICES.map((choice) => (
           <button
@@ -44,7 +44,7 @@ export function StatusEditor({ profile, onSave }: Props) {
         <input
           value={text}
           maxLength={40}
-          placeholder="在干什么？"
+          placeholder="What are you up to?"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
         />
@@ -61,7 +61,7 @@ export function StatusEditor({ profile, onSave }: Props) {
       </div>
       {message && <div className="form-message">{message}</div>}
       <button className="primary compact" type="button" disabled={busy || !dirty} onClick={save}>
-        {busy ? '保存中…' : dirty ? '保存状态' : '已是最新'}
+        {busy ? 'Saving…' : dirty ? 'Save status' : 'Up to date'}
       </button>
     </div>
   );

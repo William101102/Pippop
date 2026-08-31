@@ -76,11 +76,11 @@ export function inviteUrlWithToken(token: string | null, username: string) {
 }
 
 export function inviteText(username: string, displayName: string, token?: string | null) {
-  return `加我 Pinpop 好友 @${username}（${displayName}）\n${inviteUrlWithToken(token ?? null, username)}`;
+  return `Add me on Pinpop @${username} (${displayName})\n${inviteUrlWithToken(token ?? null, username)}`;
 }
 
 export function friendShareText(username: string, displayName: string) {
-  return `推荐你在 Pinpop 上加我的好友 @${username}（${displayName}）\n${inviteUrl(username)}`;
+  return `Add my friend @${username} (${displayName}) on Pinpop\n${inviteUrl(username)}`;
 }
 
 export async function copyText(text: string) {

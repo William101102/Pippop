@@ -34,15 +34,15 @@ export function NearbyPanel({ friends, myLocation, places, loading, onCheckIn, o
   return (
     <div className="nearby-panel">
       <button className="primary wide" type="button" disabled={!myLocation} onClick={onCheckIn}>
-        <MapPin size={17} /> 在这里打卡
+        <MapPin size={17} /> Check in here
       </button>
-      {!myLocation && <p className="muted empty-hint">先开启定位，才能看到附近的人和地点。</p>}
+      {!myLocation && <p className="muted empty-hint">Turn on location to see nearby people and places.</p>}
 
       {myLocation && (
         <>
-          <div className="eyebrow">离你最近的朋友</div>
+          <div className="eyebrow">Closest friends</div>
           {ranked.length === 0 ? (
-            <p className="muted empty-hint">还没有朋友分享位置。</p>
+            <p className="muted empty-hint">No friends sharing their location yet.</p>
           ) : (
             <div className="friend-list">
               {ranked.map(({ friend, distanceKm }) => (
@@ -55,17 +55,17 @@ export function NearbyPanel({ friends, myLocation, places, loading, onCheckIn, o
             </div>
           )}
 
-          <div className="eyebrow">附近的地点</div>
+          <div className="eyebrow">Nearby places</div>
           {loading ? (
-            <p className="muted empty-hint"><Loader2 size={14} className="spin" /> 正在找附近的地点…</p>
+            <p className="muted empty-hint"><Loader2 size={14} className="spin" /> Finding nearby places…</p>
           ) : places.length === 0 ? (
-            <p className="muted empty-hint">附近还没有打卡过的地点，来当第一个吧。</p>
+            <p className="muted empty-hint">No check-ins nearby yet — be the first.</p>
           ) : (
             <div className="friend-list">
               {places.map((place) => (
                 <button className="friend-row" key={place.id} type="button" onClick={() => onFocusPlace(place.lat, place.lng)}>
                   <span className="avatar place-avatar">{CATEGORY_ICON[place.category] || '📍'}</span>
-                  <div><b>{place.name}</b><small>{place.address || '用户打卡地点'}</small></div>
+                  <div><b>{place.name}</b><small>{place.address || 'User check-in spot'}</small></div>
                   <span className="friend-meta">{fmtDist(place.distanceKm)}</span>
                 </button>
               ))}

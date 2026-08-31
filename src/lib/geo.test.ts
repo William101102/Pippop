@@ -29,11 +29,11 @@ describe('fmtSpeed', () => {
 });
 
 describe('compassLabel', () => {
-  it('snaps to the eight Chinese points', () => {
-    expect(compassLabel(0)).toBe('北');
-    expect(compassLabel(90)).toBe('东');
-    expect(compassLabel(180)).toBe('南');
-    expect(compassLabel(270)).toBe('西');
+  it('snaps to the eight compass points', () => {
+    expect(compassLabel(0)).toBe('N');
+    expect(compassLabel(90)).toBe('E');
+    expect(compassLabel(180)).toBe('S');
+    expect(compassLabel(270)).toBe('W');
   });
 });
 

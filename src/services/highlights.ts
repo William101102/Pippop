@@ -36,7 +36,7 @@ function looksLikeImage(file: File) {
  *  past the shared `avatars` bucket's size limit or take forever to upload. */
 async function normalizeHighlightPhoto(file: File): Promise<{ body: Blob; contentType: string; extension: string }> {
   const fallback = () => {
-    if (!UPLOAD_TYPES.has(file.type)) throw new Error('这张图片浏览器读不出来，换一张 JPG 或 PNG 试试');
+    if (!UPLOAD_TYPES.has(file.type)) throw new Error('This browser can\'t read that image — try a JPG or PNG instead');
     const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
     return { body: file as Blob, contentType: file.type, extension };
   };
@@ -70,8 +70,8 @@ async function normalizeHighlightPhoto(file: File): Promise<{ body: Blob; conten
  *  the first path segment is the uploader's own uid, so any filename under
  *  that folder is fine — no new bucket/policy needed for this feature. */
 export async function uploadHighlightPhoto(userId: string, file: File): Promise<string> {
-  if (!looksLikeImage(file)) throw new Error('请选择一张图片');
-  if (file.size > MAX_PHOTO_BYTES) throw new Error('图片不能超过 12 MB');
+  if (!looksLikeImage(file)) throw new Error('Please choose an image');
+  if (file.size > MAX_PHOTO_BYTES) throw new Error('Image can\'t exceed 12 MB');
   const { body, contentType, extension } = await normalizeHighlightPhoto(file);
   const path = `${userId}/highlight-${Date.now()}.${extension}`;
   const { error } = await supabase.storage.from('avatars').upload(path, body, {
@@ -80,8 +80,8 @@ export async function uploadHighlightPhoto(userId: string, file: File): Promise<
     upsert: false,
   });
   if (error) {
-    if (/bucket not found/i.test(error.message)) throw new Error('存储还没建好：请先运行 backend/supabase/setup.sql');
-    throw new Error(error.message || '照片上传失败，请稍后再试');
+    if (/bucket not found/i.test(error.message)) throw new Error('Storage isn\'t set up yet — run backend/supabase/setup.sql first');
+    throw new Error(error.message || 'Photo upload failed — please try again later');
   }
   return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
 }
@@ -100,7 +100,7 @@ export async function postHighlight(
     lng: location?.lng ?? null,
   });
   if (error) {
-    if (error.code === MISSING_TABLE) throw new Error('动态功能还没上线：请先运行 backend/supabase/setup.sql');
+    if (error.code === MISSING_TABLE) throw new Error('Stories aren\'t live yet — run backend/supabase/setup.sql first');
     throw error;
   }
 }

@@ -4,19 +4,19 @@ import { reverseGeocode } from '../services/checkins';
 import type { LiveLocation, PlaceCategory, VisitVisibility } from '../types';
 
 const CATEGORIES: { value: PlaceCategory; label: string; icon: string }[] = [
-  { value: 'cafe', label: '咖啡', icon: '☕️' },
-  { value: 'food', label: '吃饭', icon: '🍜' },
-  { value: 'park', label: '公园', icon: '🌳' },
-  { value: 'gym', label: '运动', icon: '🏋️' },
-  { value: 'shop', label: '购物', icon: '🛍️' },
-  { value: 'home', label: '家', icon: '🏠' },
-  { value: 'work', label: '工作', icon: '💼' },
-  { value: 'other', label: '其他', icon: '📍' },
+  { value: 'cafe', label: 'Cafe', icon: '☕️' },
+  { value: 'food', label: 'Food', icon: '🍜' },
+  { value: 'park', label: 'Park', icon: '🌳' },
+  { value: 'gym', label: 'Gym', icon: '🏋️' },
+  { value: 'shop', label: 'Shopping', icon: '🛍️' },
+  { value: 'home', label: 'Home', icon: '🏠' },
+  { value: 'work', label: 'Work', icon: '💼' },
+  { value: 'other', label: 'Other', icon: '📍' },
 ];
 
 const VISIBILITIES: { value: VisitVisibility; label: string; detail: string }[] = [
-  { value: 'friends', label: '好友可见', detail: '朋友能在附近看到这次打卡' },
-  { value: 'private', label: '仅自己', detail: '只出现在你的足迹里' },
+  { value: 'friends', label: 'Friends can see', detail: 'Friends can see this check-in nearby' },
+  { value: 'private', label: 'Only me', detail: 'Only shows up in your own footprints' },
 ];
 
 interface Props {
@@ -63,24 +63,24 @@ export function CheckInPanel({ location, onClose, onSubmit }: Props) {
   return (
     <aside className="sheet sheet-full">
       <div className="sheet-head">
-        <div><div className="eyebrow">在这里打卡</div><h2>你在哪儿？</h2></div>
+        <div><div className="eyebrow">Check in here</div><h2>Where are you?</h2></div>
         <button className="close-button" type="button" onClick={onClose}><X size={19} /></button>
       </div>
 
       <div className="checkin-body">
         <label className="checkin-field">
-          地点名字
+          Place name
           <input
             value={name}
             maxLength={80}
-            placeholder={resolving ? '正在识别附近地点…' : '例如：楼下那家咖啡'}
+            placeholder={resolving ? 'Finding nearby places…' : 'e.g. the cafe downstairs'}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         {address && <p className="checkin-address">{resolving ? '' : address}</p>}
-        {resolving && <p className="checkin-address"><Loader2 size={13} className="spin" /> 正在识别位置…</p>}
+        {resolving && <p className="checkin-address"><Loader2 size={13} className="spin" /> Finding your location…</p>}
 
-        <div className="eyebrow">类型</div>
+        <div className="eyebrow">Category</div>
         <div className="chip-row">
           {CATEGORIES.map((item) => (
             <button
@@ -93,11 +93,11 @@ export function CheckInPanel({ location, onClose, onSubmit }: Props) {
         </div>
 
         <label className="checkin-field">
-          想说点什么（可选）
-          <input value={note} maxLength={140} placeholder="这里的拿铁真不错" onChange={(e) => setNote(e.target.value)} />
+          Say something (optional)
+          <input value={note} maxLength={140} placeholder="The latte here is great" onChange={(e) => setNote(e.target.value)} />
         </label>
 
-        <div className="eyebrow">谁能看到</div>
+        <div className="eyebrow">Who can see this</div>
         {VISIBILITIES.map((item) => (
           <button
             key={item.value}
@@ -112,7 +112,7 @@ export function CheckInPanel({ location, onClose, onSubmit }: Props) {
 
         {message && <div className="form-message">{message}</div>}
         <button className="primary wide" type="button" disabled={busy || !name.trim()} onClick={submit}>
-          {busy ? '打卡中…' : '打卡 📍'}
+          {busy ? 'Checking in…' : 'Check in 📍'}
         </button>
       </div>
     </aside>

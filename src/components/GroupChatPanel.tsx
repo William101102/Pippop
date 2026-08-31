@@ -35,7 +35,7 @@ export function GroupChatPanel({ group, messages, meId, onClose, onSend }: Props
         <div className="group-avatars">
           {group.members.slice(0, 3).map((m) => <Avatar key={m.id} profile={m} className="group-avatar-stack" />)}
         </div>
-        <div><b>{group.name}</b><small>{group.members.length} 位成员</small></div>
+        <div><b>{group.name}</b><small>{group.members.length} members</small></div>
       </div>
       <div className="chat-thread">
         {messages.map((m) => {
@@ -54,7 +54,7 @@ export function GroupChatPanel({ group, messages, meId, onClose, onSend }: Props
         <div ref={endRef} />
       </div>
       <div className="chat-input">
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="发条消息…" onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Send a message…" onKeyDown={(e) => e.key === 'Enter' && submit()} />
         <button type="button" onClick={submit}><Send size={18} /></button>
       </div>
     </aside>

@@ -92,8 +92,8 @@ export function watchLocation(
     void (async () => {
       const id = await BackgroundGeolocation.addWatcher(
         {
-          backgroundMessage: '正在与好友分享你的位置',
-          backgroundTitle: 'Pinpop 正在使用你的位置',
+          backgroundMessage: 'Sharing your location with friends',
+          backgroundTitle: 'Pinpop is using your location',
           requestPermissions: true,
           stale: false,
           distanceFilter: MIN_MOVE_METRES,

@@ -39,7 +39,7 @@ export async function checkIn(
   },
 ) {
   const name = input.name.trim();
-  if (!name) return { error: '给这个地点起个名字吧' };
+  if (!name) return { error: 'Give this place a name' };
 
   const { data: place, error: placeError } = await supabase
     .from('places')

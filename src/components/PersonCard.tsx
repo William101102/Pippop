@@ -35,7 +35,7 @@ export function PersonCard({
   const [thrown, setThrown] = useState<{ emoji: string; key: number } | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
   const drag = useDraggableSheet({ onDismiss: onClose, enabled: true });
-  const streak = streakInfo(person.streak_days, person.last_interaction_on);
+  const streak = streakInfo(person.streak_days, person.last_interaction_on, person.streak_grace_value, person.streak_grace_days);
 
   // Fires once per device the first time a friend's streak is seen crossing a
   // milestone — a purely client-side "did you notice" nudge, no schema needed.
@@ -93,7 +93,7 @@ export function PersonCard({
         className={`best-friend-toggle ${person.is_best_friend ? 'on' : ''}`}
         type="button"
         onClick={onToggleBest}
-        aria-label={person.is_best_friend ? '取消置顶好友' : '设为置顶好友'}
+        aria-label={person.is_best_friend ? 'Remove best friend' : 'Set as best friend'}
       >
         <Star size={17} />
       </button>
@@ -103,14 +103,25 @@ export function PersonCard({
       <p>@{person.username} · {timeAgo(theirs?.updated_at)}</p>
       {streak.days > 0 && (
         <div className={`streak-badge ${streak.tier} ${streak.atRisk ? 'at-risk' : ''}`}>
-          {streak.atRisk ? '⏳' : streak.icon} 连续互动 {streak.days} 天
-          {streak.atRisk && <em>今天还没互动，午夜前会断掉</em>}
+          {streak.atRisk ? '⏳' : streak.icon} {streak.days}-day streak
+          {streak.atRisk && <em>No interaction today yet — breaks at midnight</em>}
+        </div>
+      )}
+      {streak.repairing && (
+        <div className="streak-badge repairing">
+          🩹 Repairing streak — {streak.repairDaysLeft} more day{streak.repairDaysLeft === 1 ? '' : 's'} in a row
+          restores it to {streak.repairTarget}
+        </div>
+      )}
+      {streak.canRepair && (
+        <div className="streak-badge can-repair">
+          💔 Missed yesterday — interact today to start repairing it back to {streak.repairTarget}
         </div>
       )}
       {milestone && (
         <div className="streak-milestone" aria-hidden="true">
           <span>🎉</span>
-          <b>连续 {milestone} 天！</b>
+          <b>{milestone}-day streak!</b>
         </div>
       )}
 
@@ -121,7 +132,7 @@ export function PersonCard({
           </div>
           <div>
             <b>{fmtDist(km)}</b>
-            <small>{compassLabel(heading)} · {live ? '实时' : '最后位置'}</small>
+            <small>{compassLabel(heading)} · {live ? 'Live' : 'Last seen'}</small>
           </div>
           {speed && <em>{speed}</em>}
         </div>
@@ -136,7 +147,7 @@ export function PersonCard({
       </div>
 
       <div className="throw-section">
-        <div className="eyebrow">扔一个给 {person.display_name.slice(0, 6)}</div>
+        <div className="eyebrow">Throw something to {person.display_name.slice(0, 6)}</div>
         <div className="throw-grid">
           {THROWABLES.map((t) => (
             <button key={t.emoji} type="button" className="throw-chip" onClick={() => throwAt(t.emoji)}>
@@ -151,15 +162,15 @@ export function PersonCard({
       </div>
 
       <div className="person-actions">
-        <button type="button" onClick={onWave}><SmilePlus /><span>打招呼</span></button>
+        <button type="button" onClick={onWave}><SmilePlus /><span>Wave</span></button>
         <button type="button" onClick={onWhatsUp}><Sparkles /><span>What&apos;s Up</span></button>
-        <button type="button" onClick={onChat}><MessageCircle /><span>聊天</span></button>
-        <button type="button" onClick={onShare}><Share2 /><span>分享名片</span></button>
+        <button type="button" onClick={onChat}><MessageCircle /><span>Chat</span></button>
+        <button type="button" onClick={onShare}><Share2 /><span>Share card</span></button>
       </div>
 
       <div className="quick-message">
         <input
-          placeholder={`给 ${person.display_name} 发消息…`}
+          placeholder={`Message ${person.display_name}…`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}

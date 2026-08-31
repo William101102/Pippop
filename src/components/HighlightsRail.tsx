@@ -38,7 +38,7 @@ export function HighlightsRail({ me, friends, highlights, busy, onAddMine, onOpe
             <Plus size={12} />
           </i>
         </span>
-        <small>{busy ? '发布中…' : '我的动态'}</small>
+        <small>{busy ? 'Posting…' : 'My story'}</small>
       </button>
 
       {others.map((friend) => (

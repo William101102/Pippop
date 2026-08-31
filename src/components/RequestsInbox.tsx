@@ -13,13 +13,13 @@ export function RequestsInbox({ requests, busyIds, onRespond }: Props) {
 
   return (
     <div className="requests-inbox">
-      <div className="eyebrow">好友请求 · {requests.length}</div>
+      <div className="eyebrow">Friend requests · {requests.length}</div>
       {requests.map((request) => (
         <div className="friend-row static" key={request.relId}>
           <Avatar profile={request.profile} />
           <div>
             <b>{request.profile.display_name}</b>
-            <small>@{request.profile.username} 想加你为好友</small>
+            <small>@{request.profile.username} wants to be your friend</small>
           </div>
           <div className="request-actions">
             <button
@@ -27,14 +27,14 @@ export function RequestsInbox({ requests, busyIds, onRespond }: Props) {
               className="tiny solid"
               disabled={busyIds.has(request.relId)}
               onClick={() => onRespond(request.relId, 'accepted')}
-              aria-label="接受"
+              aria-label="Accept"
             ><Check size={15} /></button>
             <button
               type="button"
               className="tiny ghost"
               disabled={busyIds.has(request.relId)}
               onClick={() => onRespond(request.relId, 'declined')}
-              aria-label="拒绝"
+              aria-label="Decline"
             ><X size={15} /></button>
           </div>
         </div>

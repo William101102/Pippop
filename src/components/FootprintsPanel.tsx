@@ -12,16 +12,16 @@ interface Props {
 }
 
 const RANGES = [
-  { days: 7, label: '7 天' },
-  { days: 30, label: '30 天' },
-  { days: 90, label: '90 天' },
+  { days: 7, label: '7 days' },
+  { days: 30, label: '30 days' },
+  { days: 90, label: '90 days' },
 ];
 
 function humanMinutes(minutes: number) {
-  if (minutes < 60) return `${Math.round(minutes)} 分钟`;
+  if (minutes < 60) return `${Math.round(minutes)} min`;
   const hours = minutes / 60;
-  if (hours < 24) return `${hours.toFixed(hours < 10 ? 1 : 0)} 小时`;
-  return `${(hours / 24).toFixed(1)} 天`;
+  if (hours < 24) return `${hours.toFixed(hours < 10 ? 1 : 0)} hr`;
+  return `${(hours / 24).toFixed(1)} d`;
 }
 
 export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFocusPlace }: Props) {
@@ -42,7 +42,7 @@ export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFoc
       })
       .catch((e: unknown) => {
         if (stale) return;
-        setError(e instanceof Error ? e.message : '足迹加载失败');
+        setError(e instanceof Error ? e.message : 'Failed to load footprints');
       })
       .finally(() => {
         if (!stale) setLoading(false);
@@ -80,14 +80,14 @@ export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFoc
       >
         <Flame size={17} />
         <div>
-          <b>{heatVisible ? '正在显示热力图' : '显示热力图'}</b>
-          <small>你待得越久的地方颜色越深，只有你自己能看到</small>
+          <b>{heatVisible ? 'Showing heatmap' : 'Show heatmap'}</b>
+          <small>Darker means more time spent — only visible to you</small>
         </div>
       </button>
 
       {loading && (
         <p className="muted empty-hint">
-          <Loader2 size={14} className="spin" /> 正在整理你的足迹…
+          <Loader2 size={14} className="spin" /> Gathering your footprints…
         </p>
       )}
 
@@ -95,19 +95,19 @@ export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFoc
 
       {!loading && !error && places.length === 0 && (
         <div className="empty-state">
-          <p className="muted empty-hint">这段时间还没有足迹。带着 Pinpop 出门走走就会有了。</p>
+          <p className="muted empty-hint">No footprints in this period yet. Get out and about with Pinpop and they'll show up.</p>
         </div>
       )}
 
       {places.length > 0 && (
         <>
           <div className="footprint-stats">
-            <div><b>{totals.spots}</b><small>常去地点</small></div>
-            <div><b>{totals.visits}</b><small>到访次数</small></div>
-            <div><b>{humanMinutes(totals.minutes)}</b><small>累计停留</small></div>
+            <div><b>{totals.spots}</b><small>Frequent spots</small></div>
+            <div><b>{totals.visits}</b><small>Visits</small></div>
+            <div><b>{humanMinutes(totals.minutes)}</b><small>Total time</small></div>
           </div>
 
-          <div className="eyebrow">待得最久的地方</div>
+          <div className="eyebrow">Where you spend the most time</div>
           <div className="friend-list">
             {places.slice(0, 12).map((place, index) => (
               <button
@@ -120,7 +120,7 @@ export function FootprintsPanel({ heatVisible, onToggleHeat, onHeatLoaded, onFoc
                 <div>
                   <b>{place.label || `${place.lat.toFixed(3)}, ${place.lng.toFixed(3)}`}</b>
                   <small>
-                    <Clock size={11} /> {humanMinutes(Number(place.minutes))} · 去过 {place.visits} 次
+                    <Clock size={11} /> {humanMinutes(Number(place.minutes))} · visited {place.visits}x
                   </small>
                 </div>
                 <MapPin size={16} className="muted-icon" />

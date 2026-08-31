@@ -24,8 +24,8 @@ export function NewGroupSheet({ friends, onClose, onSubmit }: Props) {
   }
 
   async function submit() {
-    if (!name.trim()) { setMessage('给群聊起个名字吧'); return; }
-    if (selected.size < 2) { setMessage('至少选 2 位朋友才能建群'); return; }
+    if (!name.trim()) { setMessage('Give the group chat a name'); return; }
+    if (selected.size < 2) { setMessage('Pick at least 2 friends to start a group'); return; }
     setBusy(true);
     setMessage('');
     const result = await onSubmit({ name, memberIds: [...selected] });
@@ -36,19 +36,19 @@ export function NewGroupSheet({ friends, onClose, onSubmit }: Props) {
   return (
     <aside className="sheet sheet-full">
       <div className="sheet-head">
-        <div><div className="eyebrow">一起聊</div><h2>新建群聊</h2></div>
+        <div><div className="eyebrow">Chat together</div><h2>New group chat</h2></div>
         <button className="close-button" type="button" onClick={onClose}><X size={19} /></button>
       </div>
 
       <div className="checkin-body">
         <label className="checkin-field">
-          群聊名字
-          <input value={name} maxLength={40} placeholder="例如：周末去哪儿" onChange={(e) => setName(e.target.value)} />
+          Group name
+          <input value={name} maxLength={40} placeholder="e.g. Weekend plans" onChange={(e) => setName(e.target.value)} />
         </label>
 
-        <div className="eyebrow">选朋友（至少 2 位）</div>
+        <div className="eyebrow">Pick friends (at least 2)</div>
         {friends.length === 0 ? (
-          <p className="muted empty-hint">先加几个朋友才能建群。</p>
+          <p className="muted empty-hint">Add some friends first to start a group.</p>
         ) : (
           <div className="friend-list">
             {friends.map((f) => (
@@ -68,7 +68,7 @@ export function NewGroupSheet({ friends, onClose, onSubmit }: Props) {
 
         {message && <div className="form-message">{message}</div>}
         <button className="primary wide" type="button" disabled={busy} onClick={submit}>
-          {busy ? <Loader2 size={16} className="spin" /> : `创建群聊${selected.size ? ` (${selected.size})` : ''}`}
+          {busy ? <Loader2 size={16} className="spin" /> : `Create group${selected.size ? ` (${selected.size})` : ''}`}
         </button>
       </div>
     </aside>

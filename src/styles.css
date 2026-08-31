@@ -589,9 +589,13 @@ button { color: inherit; }
 .streak-chip { margin-left: 6px; padding: 1px 5px; border-radius: 7px; background: #fff0e6; color: #c25a2a; font-size: 9.5px; font-style: normal; font-weight: 800; }
 .streak-chip.blaze, .streak-chip.legend { background: linear-gradient(135deg, #ffdca0, #ff9f5a); color: #7a3300; }
 .streak-chip.at-risk { background: #fff2f2; color: #c23a3a; animation: streak-risk-pulse 1.4s ease-in-out infinite; }
+.streak-chip.repairing { background: #eaf6ff; color: #1a6fa8; }
+.streak-chip.can-repair { background: #fff0f0; color: #c23a3a; animation: streak-risk-pulse 1.4s ease-in-out infinite; }
 .streak-badge { display: inline-flex; align-items: center; gap: 4px; margin: 0 auto 4px; padding: 5px 12px; border-radius: 12px; background: linear-gradient(135deg, #fff1e4, #ffe6f1); color: #c25a2a; font-size: 11px; font-weight: 800; }
 .streak-badge.blaze, .streak-badge.legend { background: linear-gradient(135deg, #ffdca0, #ff9f5a); color: #7a3300; }
 .streak-badge.at-risk { background: linear-gradient(135deg, #fff0f0, #ffe2e2); color: #c23a3a; }
+.streak-badge.repairing { background: linear-gradient(135deg, #eaf6ff, #dff0ff); color: #1a6fa8; }
+.streak-badge.can-repair { background: linear-gradient(135deg, #fff0f0, #ffe2e2); color: #c23a3a; }
 .streak-badge em { margin-left: 4px; font-style: normal; font-weight: 700; font-size: 9.5px; opacity: .8; }
 @keyframes streak-risk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 .streak-milestone { display: flex; align-items: center; justify-content: center; gap: 6px; margin: -2px auto 6px; padding: 6px 14px; border-radius: 14px; background: linear-gradient(135deg, #ffe08a, #ff9f5a); color: #7a3300; font: 800 12px 'Fredoka'; animation: gift-in .4s cubic-bezier(.2,1.4,.4,1), gift-burst .9s ease .1s; }

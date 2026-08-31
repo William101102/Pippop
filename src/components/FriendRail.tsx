@@ -24,7 +24,7 @@ export function FriendRail({ me, friends, unread, activeId, onSelectMe, onSelect
         <span className="rail-avatar mine">
           <Avatar profile={me} showStatus />
         </span>
-        <small>你</small>
+        <small>You</small>
       </button>
 
       {friends.map((friend) => (
@@ -45,7 +45,7 @@ export function FriendRail({ me, friends, unread, activeId, onSelectMe, onSelect
 
       <button type="button" className="rail-item rail-add" onClick={onAddFriend}>
         <span className="rail-avatar"><Plus size={20} /></span>
-        <small>添加</small>
+        <small>Add</small>
       </button>
     </div>
   );

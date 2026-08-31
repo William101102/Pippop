@@ -9,12 +9,12 @@ export function initials(name: string) {
 }
 
 export function timeAgo(iso?: string) {
-  if (!iso) return '暂无定位';
+  if (!iso) return 'No location yet';
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (s < 60) return '刚刚';
-  if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
-  if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
-  return `${Math.floor(s / 86400)} 天前`;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 export function fmtDist(km: number) {
@@ -28,7 +28,7 @@ export function fmtSpeed(mps?: number | null) {
   return `${Math.round(mps * 3.6)} km/h`;
 }
 
-const POINTS = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'] as const;
+const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 
 export function compassLabel(deg: number) {
   const idx = Math.round(((deg % 360) + 360) % 360 / 45) % 8;

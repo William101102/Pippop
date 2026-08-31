@@ -18,9 +18,9 @@ export function InviteWelcomeCard({ friend, onClose, onOpenChat }: Props) {
         <button className="close-button" type="button" onClick={onClose}><X size={18} /></button>
         <div className="invite-welcome-icon"><PartyPopper size={22} /></div>
         <Avatar profile={friend} className="big-avatar" />
-        <h2>你和 {friend.display_name} 成为好友啦</h2>
-        <p>现在可以在地图上看到彼此，开始你们的第一天连续互动吧 🔥</p>
-        <button className="primary wide" type="button" onClick={onOpenChat}>打个招呼</button>
+        <h2>You and {friend.display_name} are now friends</h2>
+        <p>You can now see each other on the map — start your first streak day 🔥</p>
+        <button className="primary wide" type="button" onClick={onOpenChat}>Say hi</button>
       </div>
     </section>
   );
