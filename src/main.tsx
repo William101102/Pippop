@@ -4,6 +4,11 @@ import 'leaflet/dist/leaflet.css';
 import './styles.css';
 import App from './App';
 import { initNativeShell, isNative } from './lib/native';
+import { applyTheme, readThemePreference } from './lib/theme';
+
+// Resolve the theme before React mounts, so the first paint is already the
+// right appearance instead of flashing light and then correcting.
+applyTheme(readThemePreference());
 
 /**
  * On a desktop browser the product is still a phone app, so wrap it in a
