@@ -47,14 +47,25 @@ jobs:
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
+          # 2>&1 matters: the previous run died right after "Resolved source
+          # packages" with nothing useful in build.log, because whatever
+          # killed it printed to stderr and only stdout was going into the
+          # pipe below — the real reason was never captured. Merging stderr
+          # in fixes that. The two -skip... flags bypass the interactive
+          # "trust this package plugin/macro" prompt that SPM plugins (a few
+          # of these dependency trees use them) throw in non-interactive CI —
+          # a very common cause of exactly this "stops dead after resolving
+          # packages" symptom.
           xcodebuild \
             -project Pinpop.xcodeproj \
             -scheme Pinpop \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -configuration Debug \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO \
             build \
-          | tee build.log \
+          2>&1 | tee build.log \
           | xcpretty || (echo "---- full raw log ----" && cat build.log && exit 1)
 
       - name: Locate built .app
