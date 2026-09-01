@@ -26,11 +26,13 @@ struct WaveAtFriendsIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let sent = try await SocialService.waveAtEveryone()
         Haptics.shared.play(.success)
-        return .result(
-            dialog: sent > 0
-                ? "Waved at \(sent) friend\(sent == 1 ? "" : "s") 👋"
-                : "No friends to wave at yet."
-        )
+        // A ternary of two string literals resolves to plain `String`, which
+        // no longer implicitly bridges to `IntentDialog` the way a single
+        // literal would — build the String first, then wrap it explicitly.
+        let message = sent > 0
+            ? "Waved at \(sent) friend\(sent == 1 ? "" : "s") 👋"
+            : "No friends to wave at yet."
+        return .result(dialog: IntentDialog(stringLiteral: message))
     }
 }
 
