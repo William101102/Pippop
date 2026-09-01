@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   BatteryCharging, Bell, Camera, ChevronDown, Ghost, Loader2, LocateFixed,
-  LogOut, MapPin, MessageCircle, Search, Share2, Sparkles, Star, User, Users, X,
+  LogOut, MapPin, MessageCircle, Moon, Search, Share2, Sparkles, Star, User, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
@@ -120,7 +120,18 @@ function readInviteQuery() {
   }
 }
 
+/** Apple's logo is a trademark — render it inline as a small monochrome mark
+ *  rather than shipping an icon-font just for one glyph. */
+function AppleMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+      <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zM255.5 87.9c24.4-28.9 22.2-55.2 21.5-64.7-21.6 1.3-46.6 14.7-60.6 31.2-15.4 17.6-24.4 39.4-22.5 63.8 23.4 1.8 44.8-10.2 61.6-30.3z" />
+    </svg>
+  );
+}
+
 function AuthScreen({ onPreview }: { onPreview: () => void }) {
+  const [appleBusy, setAppleBusy] = useState(false);
   const [signup, setSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -168,6 +179,34 @@ function AuthScreen({ onPreview }: { onPreview: () => void }) {
         <label>Password<input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="At least 6 characters" /></label>
         {message && <div className="form-message">{message}</div>}
         <button className="primary wide" disabled={busy} onClick={submit}>{busy ? 'Please wait…' : signup ? 'Sign up' : 'Log in'}</button>
+        <button
+          className="apple-button wide"
+          type="button"
+          disabled={appleBusy || busy}
+          onClick={async () => {
+            if (!isConfigured) { setMessage('Supabase isn\'t configured yet — contact an admin.'); return; }
+            setAppleBusy(true);
+            setMessage('');
+            // Apple hands back a name only on the very first grant; ask for it
+            // so we can seed the profile display name when Supabase provides one.
+            const { error } = await supabase.auth.signInWithOAuth({
+              provider: 'apple',
+              options: {
+                queryParams: { response_mode: 'form_post' },
+                // Skip the extra redirect hop where a plain popup would work.
+                skipBrowserRedirect: typeof window !== 'undefined' && window.top !== window.self,
+              },
+            });
+            if (error) {
+              setAppleBusy(false);
+              setMessage(error.message);
+            }
+            // On success the OAuth redirect reloads the app and
+            // onAuthStateChange picks the session up — no local state needed.
+          }}
+        >
+          {appleBusy ? 'Please wait…' : <><AppleMark /> Continue with Apple</>}
+        </button>
         <button className="text-button" type="button" onClick={() => setSignup(!signup)}>{signup ? 'Already have an account? Log in' : 'First time here? Create an account'}</button>
         <div className="rule"><span>or</span></div>
         <button className="preview-button" type="button" onClick={onPreview}><Sparkles size={17} /> See what the app looks like first</button>
@@ -218,6 +257,8 @@ function App() {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [heatVisible, setHeatVisible] = useState(false);
+  // Night vision tints the map tiles dark; purely visual, not persisted.
+  const [nightVision, setNightVision] = useState(false);
   const [heatCells, setHeatCells] = useState<HeatCell[]>([]);
   const [myReactions, setMyReactions] = useState<MapReaction[]>([]);
   const [placeEvents, setPlaceEvents] = useState<PlaceEvent[]>([]);
@@ -1286,7 +1327,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <div ref={setMapNode} className="map" />
+      <div ref={setMapNode} className={`map${nightVision ? ' night' : ''}`} />
       {mapTileError && <div className="map-error-banner">{mapTileError}</div>}
       {!location && (
         <div className="map-hint">
@@ -1346,6 +1387,14 @@ function App() {
           {locating ? <Loader2 size={21} className="spin" /> : <LocateFixed size={21} />}
         </button>
         <button type="button" onClick={() => setPanel('places')} aria-label="Explore nearby"><MapPin size={21} /></button>
+        <button
+          type="button"
+          className={nightVision ? 'active' : ''}
+          onClick={() => { haptic('select'); setNightVision(v => !v); }}
+          aria-label="Toggle night vision"
+        >
+          <Moon size={21} />
+        </button>
       </div>
 
       <nav className="dock">

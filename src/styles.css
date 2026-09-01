@@ -184,6 +184,18 @@ button { color: inherit; }
 .rule { position: relative; height: 1px; margin: 8px 0; background: #eee9f1; text-align: center; }
 .rule span { position: relative; top: -9px; padding: 0 11px; color: #aaa1b2; background: #fff; font-size: 10px; }
 .preview-button { display: flex; align-items: center; justify-content: center; gap: 8px; color: #5032bd; background: #f0ebff; }
+/* Sign in with Apple — Apple's brand rules want a black pill with white text. */
+.apple-button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 16px; padding: 15px; color: #fff; background: #000; font-weight: 800; font-size: 14px; cursor: pointer; transition: transform .12s ease, opacity .12s ease; }
+.apple-button:active:not(:disabled) { transform: scale(.98); }
+.apple-button:disabled { opacity: .6; }
+/* Sign in with Apple — Apple's brand rules want a black pill with white text. */
+.apple-button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 16px; padding: 15px; color: #fff; background: #000; font-weight: 800; font-size: 14px; cursor: pointer; transition: transform .12s ease, opacity .12s ease; }
+.apple-button:active:not(:disabled) { transform: scale(.98); }
+.apple-button:disabled { opacity: .6; }
+/* Sign in with Apple — Apple's brand rules want a black pill with white text. */
+.apple-button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 16px; padding: 15px; color: #fff; background: #000; font-weight: 800; font-size: 14px; cursor: pointer; transition: transform .12s ease, opacity .12s ease; }
+.apple-button:active:not(:disabled) { transform: scale(.98); }
+.apple-button:disabled { opacity: .6; }
 
 /* Map */
 .app-shell { position: relative; height: 100%; min-height: 100%; overflow: hidden; background: #dfe9dc; }
@@ -195,8 +207,25 @@ button { color: inherit; }
   height: 100%;
   z-index: 1;
   background: #e6ecdf;
+  transition: background .35s ease, filter .35s ease;
+}
+/* Night vision: invert the light OSM tiles and hue-shift back to a dark
+   blue-green ramp — the classic dark-map CSS trick, no extra tile source. */
+.map.night .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(185deg) brightness(.92) contrast(.92) saturate(.75);
+}
+.map.night {
+  background: #10141c;
 }
 .leaflet-tile-pane { filter: saturate(.72) contrast(.9) brightness(1.08) sepia(.08); }
+/* Night vision: invert the light OSM tiles and hue-shift back to a dark
+   blue-green ramp — the classic dark-map CSS trick, no extra tile source.
+   Sits after the default above so it wins at equal specificity. */
+.map.night .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(185deg) brightness(.92) contrast(.92) saturate(.75);
+}
+/* .map.night .leaflet-tile-pane above must win over this default, so it sits
+   later with a matching selector; no !important needed at equal specificity. */
 .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,.72) !important; }
 .map-error-banner {
   position: absolute;
@@ -949,6 +978,7 @@ body.native .auth-card {
   padding: calc(var(--safe-top) + 16px) 24px calc(var(--safe-bottom) + 16px);
 }
 body.native .chat-panel { padding-bottom: calc(var(--safe-bottom) + 8px); }
+.map.night { background: #10141c; }
 
 /* Framed desktop preview: pin every chrome layer to the device insets so
    status bar, topbar, friend rail and dock cannot sit on top of each other. */
