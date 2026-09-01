@@ -22,6 +22,13 @@ jobs:
     defaults:
       run:
         working-directory: ios-native
+    env:
+      # The macos-15 runner image ships with an untrusted `aws/tap` already
+      # tapped. Recent Homebrew refuses to install ANYTHING — even an
+      # unrelated formula like xcodegen — while any untrusted tap is present,
+      # unless this is set. Nothing here installs from that tap; this only
+      # turns off the blanket refusal.
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
     steps:
       - uses: actions/checkout@v4
 
