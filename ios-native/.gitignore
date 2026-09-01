@@ -1,0 +1,5 @@
+Pinpop.xcodeproj/
+Sources/Config/Secrets.xcconfig
+.DS_Store
+xcuserdata/
+build/
