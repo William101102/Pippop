@@ -39,6 +39,17 @@ targets:
   Pinpop:
     type: application
     platform: iOS
+    settings:
+      base:
+        # Every other identifier in this file (the URL scheme's
+        # CFBundleURLName below, the App Group, the widget's own
+        # com.pinpop.app.widgets) assumes the host app is com.pinpop.app.
+        # Without setting it explicitly, xcodegen defaults an unset
+        # PRODUCT_BUNDLE_IDENTIFIER to "<bundleIdPrefix>.<target name>" —
+        # com.pinpop.Pinpop — which the widget's id doesn't start with, so
+        # Xcode refuses to embed it ("Embedded binary's bundle identifier is
+        # not prefixed with the parent app's bundle identifier").
+        PRODUCT_BUNDLE_IDENTIFIER: com.pinpop.app
     sources:
       - path: Sources
         excludes:
