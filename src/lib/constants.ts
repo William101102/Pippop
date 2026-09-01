@@ -24,6 +24,15 @@ export const MAP_FOCUS_ZOOM = 16;
 export const SHEET_OFFSET_PX = 150;
 export const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
+/**
+ * Absolute, cross-origin URL so it opens in the system browser from inside
+ * the native app (Capacitor hands off any link outside its own
+ * capacitor://localhost origin) instead of showing the copy bundled into the
+ * app itself. Also the URL to enter as the Privacy Policy link in App Store
+ * Connect. Update this if a custom domain (see CNAME.example) goes live.
+ */
+export const PRIVACY_POLICY_URL = 'https://william101102.github.io/zenly-app/privacy.html';
+
 export const GHOST_MODES: { value: GhostMode; title: string; detail: string; icon: string }[] = [
   { value: 'precise', title: 'Precise', detail: 'Shows your exact location live', icon: '◎' },
   { value: 'blurred', title: 'Blurred', detail: 'Randomly offset by about 0.2–1.2 km', icon: '◌' },

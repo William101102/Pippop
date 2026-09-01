@@ -511,6 +511,12 @@ button { color: inherit; }
 .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .privacy-note { display: flex; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); text-align: left; }
 .privacy-note div { display: grid; gap: 2px; }
+/* Same card, but an actual link out (e.g. the privacy policy) rather than a
+   static notice — needs its own affordance so it doesn't read as inert. */
+.privacy-note.link { align-items: center; color: var(--ink); text-decoration: none; cursor: pointer; transition: background .15s ease, transform .15s ease; }
+.privacy-note.link:hover { background: var(--fill); }
+.privacy-note.link:active { transform: scale(.98); }
+.privacy-note.link .external-icon { margin-left: auto; flex-shrink: 0; color: var(--muted); }
 
 /* Ghost mode and profile card */
 .ghost-panel > p { color: var(--muted); font-size: 11px; line-height: 1.5; }

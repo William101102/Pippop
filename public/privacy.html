@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#fff8ef" />
+    <title>Pinpop — Privacy Policy</title>
+    <link rel="icon" type="image/png" href="./icons/favicon-64.png" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: #241c33;
+        --muted: #5f5670;
+        --ground: #fff8ef;
+        --surface: #ffffff;
+        --line: #e8e2ed;
+        --violet: #6a4fe0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #f5f1fa;
+          --muted: #a79fb8;
+          --ground: #14111c;
+          --surface: #1e1a29;
+          --line: #342c46;
+          --violet: #a08aff;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 40px 20px 80px;
+        background: var(--ground);
+        color: var(--ink);
+        font: 16px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        max-width: 680px;
+        margin: 0 auto;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        padding: 36px 32px 44px;
+      }
+      h1 { font-size: 26px; margin: 0 0 4px; }
+      .updated { color: var(--muted); font-size: 13px; margin: 0 0 32px; }
+      h2 { font-size: 17px; margin: 32px 0 8px; }
+      p, li { color: var(--ink); }
+      ul { padding-left: 20px; margin: 8px 0; }
+      li { margin: 4px 0; }
+      a { color: var(--violet); }
+      .lede { color: var(--muted); }
+      .pill {
+        display: inline-block;
+        margin-top: 28px;
+        padding: 10px 16px;
+        border-radius: 14px;
+        background: var(--ground);
+        border: 1px solid var(--line);
+        font-size: 14px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Pinpop Privacy Policy</h1>
+      <p class="updated">Last updated: September 1, 2026</p>
+
+      <p class="lede">
+        Pinpop is a location-sharing app for friends. This page explains exactly what
+        we collect, why, and how you can control or delete it. We do not run ads,
+        do not use analytics or tracking SDKs, and do not sell or share your data
+        with data brokers or advertisers.
+      </p>
+
+      <h2>Information we collect</h2>
+      <ul>
+        <li><b>Account &amp; profile</b> — email or Apple/Google account identifier used to sign in, display name, username, and profile photo.</li>
+        <li><b>Location</b> — your device's GPS location, shared with your friends according to the sharing level you choose (see below).</li>
+        <li><b>Messages &amp; social activity</b> — chat messages, waves, reactions, and "throws" you send to friends; friend requests and streaks.</li>
+        <li><b>Highlights</b> — photos and captions you choose to post, along with the location you posted them from.</li>
+        <li><b>Places</b> — check-ins at nearby places, and Zenlands (custom locations you create and label for friends).</li>
+        <li><b>Status &amp; device signals</b> — the status text/emoji you set, your battery level, and a push-notification token so we can deliver alerts.</li>
+      </ul>
+      <p>We only collect what powers a feature you're actively using — there is no background data collection beyond your live location while you have sharing turned on.</p>
+
+      <h2>Location sharing is yours to control</h2>
+      <p>Every account has a sharing mode, changeable any time in Settings:</p>
+      <ul>
+        <li><b>Precise</b> — friends see your exact live location.</li>
+        <li><b>Blurred</b> — friends see a randomly offset location (roughly 0.2–1.2 km away from you); your real coordinates never leave our servers.</li>
+        <li><b>Frozen</b> — friends see your last shared location, frozen in place; live updates stop entirely.</li>
+      </ul>
+      <p>Blurring and freezing both happen on our server, not on your device — a friend's app is never sent your precise coordinates unless you've chosen Precise. You can also override this per friend.</p>
+
+      <h2>How we use your information</h2>
+      <ul>
+        <li>To show your location to friends per your chosen sharing mode, and show you theirs.</li>
+        <li>To operate chat, waves, reactions, streaks, Highlights, check-ins, and Zenlands.</li>
+        <li>To send push notifications for things like friend requests, messages, and waves.</li>
+        <li>To keep the service secure and working (e.g. rate-limiting abuse, debugging crashes you report to us directly).</li>
+      </ul>
+      <p>We do not use your data for advertising, do not build advertising or analytics profiles, and do not use it to train third-party AI models.</p>
+
+      <h2>Who we share it with</h2>
+      <ul>
+        <li><b>Supabase</b>, our backend hosting provider, stores your data on our behalf and does not use it for its own purposes.</li>
+        <li><b>Apple</b> or <b>Google</b>, only if you choose to sign in with them — they handle authentication and share only the name/email you approve.</li>
+        <li><b>Apple Push Notification service</b>, to deliver notifications to your device.</li>
+        <li><b>OpenStreetMap</b>, to load map tiles — your device requests these directly, so your IP address is visible to OpenStreetMap while a tile loads, the same as loading any map on the web.</li>
+      </ul>
+      <p>We never sell your data, and never share it with advertisers or data brokers.</p>
+
+      <h2>Your choices</h2>
+      <ul>
+        <li>Change your sharing mode, per-friend overrides, or username/profile at any time in Settings.</li>
+        <li>Unfriend, block, or leave a group chat at any time.</li>
+        <li>Delete individual messages, Highlights, or check-ins from within the app.</li>
+        <li>Delete your entire account from Settings → Account → Delete account. This is immediate and permanent: your profile, location history, messages, Highlights, and check-ins are erased from our servers right away, with nothing kept in cold storage afterward.</li>
+      </ul>
+
+      <h2>Data retention</h2>
+      <p>
+        We keep your data only as long as your account is active, so the app can keep working the way you'd expect
+        (showing your friends' recent activity, streaks, and history with them). Deleting your account removes it
+        immediately, as described above.
+      </p>
+
+      <h2>Children</h2>
+      <p>Pinpop is not directed at children under 13, and we do not knowingly collect data from them.</p>
+
+      <h2>Changes to this policy</h2>
+      <p>If this policy changes in a meaningful way, we'll update the date at the top of this page.</p>
+
+      <h2>Contact us</h2>
+      <p>
+        Questions, or a request to access or delete your data outside the app?
+        Email <a href="mailto:huang118025043@gmail.com">huang118025043@gmail.com</a>.
+      </p>
+
+      <span class="pill">This page is served as a static file and works without a Pinpop account.</span>
+    </main>
+  </body>
+</html>

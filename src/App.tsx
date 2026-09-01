@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
-  BatteryCharging, Bell, Camera, ChevronDown, Ghost, Loader2, LocateFixed,
-  LogOut, MapPin, MessageCircle, Moon, Search, Share2, Sparkles, Star, Sun, SunMoon,
+  BatteryCharging, Bell, Camera, ChevronDown, ExternalLink, Ghost, Loader2, LocateFixed,
+  LogOut, MapPin, MessageCircle, Moon, Search, Share2, ShieldCheck, Sparkles, Star, Sun, SunMoon,
   User, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
@@ -25,7 +25,7 @@ import { NotificationsPanel, type UnreadPreview } from './components/Notificatio
 import { PersonCard } from './components/PersonCard';
 import { RequestsInbox } from './components/RequestsInbox';
 import { StatusEditor } from './components/StatusEditor';
-import { GHOST_MODES, SHEET_OFFSET_PX } from './lib/constants';
+import { GHOST_MODES, PRIVACY_POLICY_URL, SHEET_OFFSET_PX } from './lib/constants';
 import { fmtDist, fmtSpeed } from './lib/format';
 import { streakInfo } from './lib/streak';
 import { clusterByPixels } from './lib/cluster';
@@ -297,6 +297,10 @@ function App() {
   // Separate layer so toggling the heatmap never rebuilds the person pins.
   const heatLayer = useRef<L.LayerGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  // The mounted PersonCard's root element, so its real on-screen height can
+  // be measured to keep the selected friend's pin clear of it (see the
+  // selectedId-panning effect below).
+  const personCardRef = useRef<HTMLElement | null>(null);
   const didAutoFocus = useRef(false);
   const geofence = useRef(createGeofenceTracker());
   const zoneGeofence = useRef(createZoneGeofenceTracker());
@@ -640,8 +644,41 @@ function App() {
     haptic('select');
     setSelectedId(friend.id);
     setPanel(null);
-    if (friend.location) focusMapOn(friend.location.lat, friend.location.lng);
-  }, [focusMapOn]);
+    // No pan here — the PersonCard sheet hasn't mounted yet, so its real
+    // height isn't known. The effect below (keyed on selectedId) does the
+    // panning once the card has a measurable layout.
+  }, []);
+
+  // Keeps the tapped friend's pin visible above the PersonCard sheet instead
+  // of hidden under it. `focusMapOn`'s fixed SHEET_OFFSET_PX (150px) is
+  // calibrated for the slim bottom dock — nowhere near enough to clear a
+  // sheet that can run up to 69% of the screen on a tall phone, which is
+  // exactly what made the friend's pin disappear under the card. Measuring
+  // the card's actual rendered height and shifting by half of it centers the
+  // pin in whatever strip of map is still visible, on any screen size.
+  useEffect(() => {
+    if (!selectedId || !map.current || !mapNode) return;
+    const loc = friends.find((f) => f.id === selectedId)?.location;
+    if (!loc) return;
+    const raf = requestAnimationFrame(() => {
+      if (!map.current) return;
+      const mapHeight = mapNode.getBoundingClientRect().height;
+      // Fallback mirrors the sheet's CSS max-height (69%) for the rare case
+      // the ref isn't measurable yet, rather than under-shooting to 0.
+      const cardHeight = personCardRef.current?.getBoundingClientRect().height
+        ?? mapHeight * 0.69;
+      const offset = Math.min(cardHeight / 2 + 16, mapHeight * 0.42);
+      const z = map.current.getZoom() < 14 ? 16 : map.current.getZoom();
+      const pt = map.current.project(L.latLng(loc.lat, loc.lng), z);
+      pt.y += offset;
+      map.current.flyTo(map.current.unproject(pt, z), z, { animate: true, duration: 0.6 });
+    });
+    return () => cancelAnimationFrame(raf);
+    // Deliberately excludes `friends` — re-panning on every live location tick
+    // for the friend already on screen would keep yanking the map while
+    // someone is mid-read of the card. Only a fresh selection re-centers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, mapNode]);
 
   useEffect(() => {
     if (!mapNode || map.current) return;
@@ -1840,6 +1877,18 @@ function App() {
                 </div>
               )}
 
+              <div className="eyebrow">Legal</div>
+              <a
+                className="privacy-note link"
+                href={PRIVACY_POLICY_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ShieldCheck size={19} />
+                <div><b>Privacy policy</b><small>What we collect, how sharing modes work, and how to delete your data</small></div>
+                <ExternalLink size={15} className="external-icon" />
+              </a>
+
               <div className="eyebrow">Account</div>
               <div className="danger-zone">
                 {deleteArmed ? (
@@ -1869,6 +1918,7 @@ function App() {
 
       {selected && (
         <PersonCard
+          ref={personCardRef}
           person={selected}
           myLocation={location}
           onClose={() => setSelectedId(null)}

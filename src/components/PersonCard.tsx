@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import { BatteryCharging, MessageCircle, Send, Share2, SmilePlus, Sparkles, Star, X } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { compassLabel, fmtDist, fmtSpeed, timeAgo } from '../lib/format';
@@ -27,10 +27,13 @@ interface Props {
   onError: (text: string) => void;
 }
 
-export function PersonCard({
+// Forwards its root element so the map can measure the sheet's actual
+// rendered height and pan the tapped friend's pin clear of it — see the
+// effect keyed on `selectedId` in App.tsx.
+export const PersonCard = forwardRef<HTMLElement, Props>(function PersonCard({
   person, myLocation, onClose, onChat, onWave, onWhatsUp, onShare,
   onReact, onToggleBest, onSend, onError,
-}: Props) {
+}, ref) {
   const [draft, setDraft] = useState('');
   const [thrown, setThrown] = useState<{ emoji: string; key: number } | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
@@ -91,7 +94,7 @@ export function PersonCard({
   }
 
   return (
-    <section className={`person-card ${drag.sheetProps.className}`} style={drag.sheetProps.style}>
+    <section ref={ref} className={`person-card ${drag.sheetProps.className}`} style={drag.sheetProps.style}>
       <div className="grabber-hit" {...drag.handleProps}><div className="grabber" /></div>
       <button className="close-button" type="button" onClick={onClose}><X size={18} /></button>
       <button
@@ -186,4 +189,4 @@ export function PersonCard({
       </div>
     </section>
   );
-}
+});
