@@ -270,10 +270,19 @@ function App() {
 
   // Single choke point for user-facing feedback, so it is also where the app
   // earns its haptics. Failures read as fail/error/can't/need in this codebase.
+  const toastTimer = useRef<number | null>(null);
   const notify = useCallback((text: string) => {
     haptic(/fail|error|can't|unable|need to first/i.test(text) ? 'warning' : 'success');
     setToast(text);
-    window.setTimeout(() => setToast(''), 3200);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => {
+      setToast('');
+      toastTimer.current = null;
+    }, 3200);
+  }, []);
+  // Clear any pending toast timer on unmount so it can't fire setState afterward.
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
   }, []);
 
   const switchPanel = useCallback((next: Panel) => {

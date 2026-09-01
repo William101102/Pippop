@@ -39,9 +39,25 @@ export function nextStatus(currentEmoji: string) {
   return STATUSES[(idx + 1 + STATUSES.length) % STATUSES.length];
 }
 
+/**
+ * Make a raw search box entry safe for a PostgREST `.or()` ilike filter:
+ * escape the LIKE wildcards (`%` `_` `\`) so they match literally, and drop the
+ * characters that would otherwise break out of the or-string syntax
+ * (`,` separates conditions, `()` group them, `.` splits column.op.value).
+ */
+function sanitizeSearchTerm(raw: string) {
+  return raw
+    .trim()
+    .replace(/[\\%_]/g, (m) => `\\${m}`)
+    .replace(/[,().:*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function searchProfiles(excludeId: string, query: string, limit = 20) {
   let q = supabase.from('profiles').select('*').neq('id', excludeId).limit(limit);
-  if (query.trim()) q = q.or(`username.ilike.%${query.trim()}%,display_name.ilike.%${query.trim()}%`);
+  const term = sanitizeSearchTerm(query);
+  if (term) q = q.or(`username.ilike.%${term}%,display_name.ilike.%${term}%`);
   const { data, error } = await q;
   if (error) throw error;
   return (data || []) as Profile[];

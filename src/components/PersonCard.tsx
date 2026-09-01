@@ -46,7 +46,10 @@ export function PersonCard({
     let seen = 0;
     try { seen = Number(localStorage.getItem(key) || 0); } catch { /* private mode etc */ }
     const current = streak.days;
-    const crossed = STREAK_MILESTONES.find((m) => current >= m && seen < m);
+    // Celebrate the HIGHEST milestone newly reached since this device last saw
+    // this friend's streak — scanning low-to-high would fire "3-day streak!"
+    // the first time you open a card for someone already on a 30-day run.
+    const crossed = [...STREAK_MILESTONES].reverse().find((m) => current >= m && seen < m);
     if (crossed) {
       haptic('success');
       setMilestone(crossed);
