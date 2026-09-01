@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, Users, X } from 'lucide-react';
 import { inviteText, shareText } from '../lib/geo';
 import { initials } from '../lib/format';
-import type { Profile } from '../types';
+import type { Profile, SuggestedFriend } from '../types';
 
 interface Props {
   me: Profile;
   results: Profile[];
+  /** Friends-of-friends, newest/most-connected first — see suggested_friends()
+   *  in setup.sql. Only shown while the search box is empty, so it reads as
+   *  "here's who to add" rather than competing with actual search results. */
+  suggestions: SuggestedFriend[];
   sentIds: Set<string>;
   friendIds: Set<string>;
   onClose: () => void;
@@ -18,7 +22,7 @@ interface Props {
 }
 
 export function AddFriendPanel({
-  me, results, sentIds, friendIds, onClose, onSearch, onSendRequest, onNotify, initialQuery = '', inviteToken,
+  me, results, suggestions, sentIds, friendIds, onClose, onSearch, onSendRequest, onNotify, initialQuery = '', inviteToken,
 }: Props) {
   const [query, setQuery] = useState(initialQuery);
 
@@ -48,22 +52,53 @@ export function AddFriendPanel({
         <span>Share with friends →</span>
       </button>
       <div className="search"><Search size={18} /><input placeholder="Enter a friend's ID or name" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
-      <div className="friend-list">
-        {results.map((p) => {
-          const already = friendIds.has(p.id);
-          const sent = sentIds.has(p.id);
-          return (
-            <div className="friend-row static" key={p.id}>
-              <span className="avatar" style={{ background: p.avatar_color }}>{initials(p.display_name)}</span>
-              <div><b>{p.display_name}</b><small>@{p.username}</small></div>
-              {already ? <span className="tag">Friends</span> : sent ? <span className="tag">Sent</span> : (
-                <button type="button" className="tiny solid" onClick={() => onSendRequest(p.id).catch((e) => onNotify(String(e)))}>＋ Add</button>
-              )}
-            </div>
-          );
-        })}
-        {query && !results.length && <div className="empty-hint">No results for "{query}"</div>}
-      </div>
+
+      {!query && suggestions.length > 0 && (
+        <>
+          <div className="eyebrow"><Users size={12} /> People you may know</div>
+          <div className="friend-list">
+            {suggestions.map((p) => {
+              const sent = sentIds.has(p.id);
+              return (
+                <div className="friend-row static" key={p.id}>
+                  <span className="avatar" style={{ background: p.avatar_color }}>{initials(p.display_name)}</span>
+                  <div>
+                    <b>{p.display_name}</b>
+                    <small>
+                      Friends with {p.mutual_name}
+                      {p.mutual_count > 1 ? ` +${p.mutual_count - 1} more` : ''}
+                    </small>
+                  </div>
+                  {sent ? <span className="tag">Sent</span> : (
+                    <button type="button" className="tiny solid" onClick={() => onSendRequest(p.id).catch((e) => onNotify(String(e)))}>＋ Add</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {query && (
+        <>
+          <div className="friend-list">
+            {results.map((p) => {
+              const already = friendIds.has(p.id);
+              const sent = sentIds.has(p.id);
+              return (
+                <div className="friend-row static" key={p.id}>
+                  <span className="avatar" style={{ background: p.avatar_color }}>{initials(p.display_name)}</span>
+                  <div><b>{p.display_name}</b><small>@{p.username}</small></div>
+                  {already ? <span className="tag">Friends</span> : sent ? <span className="tag">Sent</span> : (
+                    <button type="button" className="tiny solid" onClick={() => onSendRequest(p.id).catch((e) => onNotify(String(e)))}>＋ Add</button>
+                  )}
+                </div>
+              );
+            })}
+            {query && !results.length && <div className="empty-hint">No results for "{query}"</div>}
+          </div>
+        </>
+      )}
     </aside>
   );
 }

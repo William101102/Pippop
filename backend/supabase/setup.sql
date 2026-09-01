@@ -435,6 +435,83 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- "People you may know": friends of your friends, ranked by how many of
+-- your friends they share, with one of those mutual friends' names attached
+-- so the client can show "Friends with Maya" instead of a bare profile.
+-- Security definer because a normal client query cannot see a stranger's
+-- friendships rows at all (RLS only exposes rows you're party to) — this
+-- computes the two-hop graph server-side and returns only the minimal
+-- profile fields needed for a suggestion card, never the underlying edges.
+create or replace function public.suggested_friends(p_limit int default 12)
+returns table(
+  id uuid,
+  display_name text,
+  username text,
+  avatar_url text,
+  avatar_color text,
+  status_emoji text,
+  mutual_count int,
+  mutual_name text
+)
+language sql stable security definer set search_path = public as $$
+  with my_friends as (
+    select case when f.requester_id = auth.uid() then f.addressee_id else f.requester_id end as friend_id
+    from public.friendships f
+    where f.status = 'accepted' and (f.requester_id = auth.uid() or f.addressee_id = auth.uid())
+  ),
+  -- Every (candidate, introduced-by) pair reachable in exactly two hops.
+  candidates as (
+    select
+      case when f2.requester_id = mf.friend_id then f2.addressee_id else f2.requester_id end as candidate_id,
+      mf.friend_id as via_friend_id
+    from my_friends mf
+    join public.friendships f2
+      on f2.status = 'accepted'
+      and (f2.requester_id = mf.friend_id or f2.addressee_id = mf.friend_id)
+  ),
+  filtered as (
+    select c.candidate_id, c.via_friend_id
+    from candidates c
+    where c.candidate_id <> auth.uid()
+      and c.candidate_id not in (select friend_id from my_friends)
+      -- Skip anyone with a pending/declined request between us either way,
+      -- and anyone blocked in either direction.
+      and not exists (
+        select 1 from public.friendships f3
+        where (f3.requester_id = auth.uid() and f3.addressee_id = c.candidate_id)
+           or (f3.requester_id = c.candidate_id and f3.addressee_id = auth.uid())
+      )
+      and not exists (
+        select 1 from public.blocks b
+        where (b.blocker_id = auth.uid() and b.blocked_id = c.candidate_id)
+           or (b.blocker_id = c.candidate_id and b.blocked_id = auth.uid())
+      )
+  ),
+  agg as (
+    select candidate_id, count(distinct via_friend_id) as mutual_count
+    from filtered
+    group by candidate_id
+  ),
+  -- One representative mutual friend per candidate, for the "Friends with
+  -- ___" label — which one is arbitrary but stable (lowest id) so the label
+  -- does not flicker between refreshes.
+  one_mutual as (
+    select distinct on (candidate_id) candidate_id, via_friend_id
+    from filtered
+    order by candidate_id, via_friend_id
+  )
+  select
+    p.id, p.display_name, p.username, p.avatar_url, p.avatar_color, p.status_emoji,
+    a.mutual_count::int, mp.display_name as mutual_name
+  from agg a
+  join one_mutual om on om.candidate_id = a.candidate_id
+  join public.profiles p on p.id = a.candidate_id
+  join public.profiles mp on mp.id = om.via_friend_id
+  order by a.mutual_count desc, p.display_name asc
+  limit p_limit;
+$$;
+grant execute on function public.suggested_friends(int) to authenticated;
+
 -- Redeems an invite-link token into an immediately-accepted friendship.
 -- Security definer so it can write an 'accepted' row directly, bypassing the
 -- normal "create friend request" policy (which only ever allows 'pending')
@@ -1340,4 +1417,7 @@ union all select 'streak repair columns',
        case when exists (select 1 from information_schema.columns
          where table_schema = 'public' and table_name = 'friendships' and column_name = 'streak_grace_value')
        then 'ok' else 'MISSING' end
+union all select 'suggested_friends()',
+       case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = 'suggested_friends') then 'ok' else 'MISSING' end
 order by item;

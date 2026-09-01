@@ -43,6 +43,16 @@ export interface FriendRequest {
   profile: Profile;
 }
 
+/** A "people you may know" candidate — a friend of one of your friends, not
+ *  yet a friend (or pending/blocked) yourself. `mutual_name` is one of the
+ *  friends who introduces them, for a "Friends with ___" label; `mutual_count`
+ *  is how many of your friends they actually share, in case there's more
+ *  than one. */
+export interface SuggestedFriend extends Profile {
+  mutual_count: number;
+  mutual_name: string;
+}
+
 export type MessageKind = 'text' | 'emoji' | 'wave' | 'image' | 'location' | 'whats_up';
 
 export interface Message {

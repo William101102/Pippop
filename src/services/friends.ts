@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { loadBestFriendIds } from './social';
-import type { Friend, FriendRequest, FriendshipRow, LiveLocation, Profile } from '../types';
+import type { Friend, FriendRequest, FriendshipRow, LiveLocation, Profile, SuggestedFriend } from '../types';
 
 /**
  * friend_locations applies Ghost Mode masking, so it is the preferred source.
@@ -142,6 +142,22 @@ export async function fetchFriendLocation(userId: string) {
 
 const MISSING_TABLE = '42P01';
 const MISSING_FUNCTION = '42883';
+
+/**
+ * "People you may know" — friends of your friends, computed server-side (see
+ * suggested_friends() in setup.sql) so the two-hop friendship graph never has
+ * to be exposed to the client. Empty array (not an error) on a database that
+ * hasn't run the latest setup.sql yet, same as the other optional-feature
+ * calls in this file.
+ */
+export async function loadSuggestedFriends(limit = 12): Promise<SuggestedFriend[]> {
+  const { data, error } = await supabase.rpc('suggested_friends', { p_limit: limit });
+  if (error) {
+    if (error.code === MISSING_FUNCTION) return [];
+    throw error;
+  }
+  return (data || []) as SuggestedFriend[];
+}
 
 /** A single-use-friendly invite link token. Anyone who redeems it becomes an
  *  accepted friend immediately — no separate approval step — because holding

@@ -6,13 +6,23 @@ const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
 const UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const PHOTO_MAX_DIM = 960;
 
-/** Still-live highlights from me and my accepted friends, newest first,
- *  grouped by author. RLS already drops anyone who isn't a friend and
- *  anything past `expires_at`. */
+/**
+ * Still-live highlights from me and my accepted friends, newest first,
+ * grouped by author — this is what the story rail shows. RLS lets a friend
+ * read yours only while `expires_at` is in the future, but it never applies
+ * that same cutoff to your own rows (see "read friend highlights" in
+ * setup.sql, which grants the owner unconditional access) — so this filters
+ * by `expires_at` explicitly, for everyone including you, rather than
+ * relying on RLS alone. Without it, your own story ring would stay "live"
+ * forever off the very first post, showing your entire history as if it
+ * were today's story. What's past `expires_at` for you specifically lives in
+ * loadMyHighlightArchive below.
+ */
 export async function loadFriendHighlights(): Promise<Record<string, Highlight[]>> {
   const { data, error } = await supabase
     .from('highlights')
     .select('*')
+    .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(200);
   if (error) {
@@ -24,6 +34,27 @@ export async function loadFriendHighlights(): Promise<Record<string, Highlight[]
     (byUser[row.user_id] ??= []).push(row);
   }
   return byUser;
+}
+
+/**
+ * Every story you've ever posted, expired or not, newest first — your own
+ * "memories" archive. Friends never see this: the "read friend highlights"
+ * policy only grants unconditional (no-expiry) access to `auth.uid() =
+ * user_id`, so this query only ever returns rows for the signed-in user
+ * regardless of whose id is passed in.
+ */
+export async function loadMyHighlightArchive(userId: string): Promise<Highlight[]> {
+  const { data, error } = await supabase
+    .from('highlights')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error) {
+    if (error.code === MISSING_TABLE) return [];
+    throw error;
+  }
+  return (data || []) as Highlight[];
 }
 
 function looksLikeImage(file: File) {

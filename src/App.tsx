@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
-  BatteryCharging, Bell, Camera, ChevronDown, ExternalLink, Ghost, Loader2, LocateFixed,
+  Archive, BatteryCharging, Bell, Camera, ChevronDown, ExternalLink, Ghost, Loader2, LocateFixed,
   LogOut, MapPin, MessageCircle, Moon, Search, Share2, ShieldCheck, Sparkles, Star, Sun, SunMoon,
   User, Users, X,
 } from 'lucide-react';
@@ -47,10 +47,11 @@ import {
   loadMyReactions, loadPlaceEvents, recordPlaceEvent, sendReaction, setBestFriend, THROWABLES,
 } from './services/social';
 import {
-  createInviteToken, fetchFriendLocation, loadFriendsBundle, redeemInvite, respondFriendRequest, sendFriendRequest,
+  createInviteToken, fetchFriendLocation, loadFriendsBundle, loadSuggestedFriends, redeemInvite,
+  respondFriendRequest, sendFriendRequest,
 } from './services/friends';
 import {
-  deleteHighlight, loadFriendHighlights, postHighlight, uploadHighlightPhoto,
+  deleteHighlight, loadFriendHighlights, loadMyHighlightArchive, postHighlight, uploadHighlightPhoto,
 } from './services/highlights';
 import { createGroup, loadGroupThread, loadMyGroups, sendGroupMessage } from './services/groups';
 import { getMyLastLocation, upsertMyLocation } from './services/locations';
@@ -62,7 +63,7 @@ import {
 } from './services/profiles';
 import type {
   ChatGroup, Friend, FriendRequest, GhostMode, HeatCell, Highlight, LiveLocation, MapReaction, Message,
-  NearbyPlace, Panel, PlaceCategory, PlaceEvent, Profile, Visit, VisitVisibility, Zone,
+  NearbyPlace, Panel, PlaceCategory, PlaceEvent, Profile, SuggestedFriend, Visit, VisitVisibility, Zone,
 } from './types';
 import { demoFriends, demoLocation, demoMe } from './dev/demo';
 import { useBattery } from './hooks/useBattery';
@@ -245,6 +246,7 @@ function App() {
   const [requestBusy, setRequestBusy] = useState<Set<string>>(new Set());
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [addResults, setAddResults] = useState<Profile[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestedFriend[]>([]);
   const [inviteQuery, setInviteQuery] = useState('');
   const [pendingInviteToken, setPendingInviteToken] = useState('');
   const [inviteRedeeming, setInviteRedeeming] = useState(false);
@@ -286,6 +288,11 @@ function App() {
   const [highlightViewerId, setHighlightViewerId] = useState<string | null>(null);
   const [postingHighlight, setPostingHighlight] = useState(false);
   const [highlightBusy, setHighlightBusy] = useState(false);
+  // Every story you've ever posted — including ones that expired off the
+  // friend-visible rail above. Friends can never see this; it's how you get
+  // back to your own past stories once they've stopped showing for them.
+  const [archive, setArchive] = useState<Highlight[]>([]);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [zones, setZones] = useState<Zone[]>([]);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [groupThreads, setGroupThreads] = useState<Record<string, Message[]>>({});
@@ -560,6 +567,7 @@ function App() {
         getFriendGhostModes(user.user.id).then(setFriendModes).catch(() => undefined);
         loadMyVisits(user.user.id).then(setMyVisits).catch(() => undefined);
         loadFriendHighlights().then(setHighlights).catch(() => undefined);
+        loadMyHighlightArchive(user.user.id).then(setArchive).catch(() => undefined);
         loadVisibleZones().then(setZones).catch(() => undefined);
         loadMyGroups().then(setGroups).catch(() => undefined);
       }
@@ -572,6 +580,14 @@ function App() {
   useEffect(() => {
     if (inviteQuery && profile) setPanel('add');
   }, [inviteQuery, profile]);
+
+  // "People you may know" — loaded on demand when the add-friend sheet opens
+  // rather than kept warm all the time, since it's a heavier two-hop query
+  // and only ever matters right before someone taps "Add friend".
+  useEffect(() => {
+    if (panel !== 'add' || preview || !profile) return;
+    loadSuggestedFriends().then(setSuggestions).catch(() => undefined);
+  }, [panel, preview, profile]);
 
   // A token link redeems straight into a mutual friendship — no search step,
   // no waiting on the other side to approve. See redeemInvite/redeem_invite.
@@ -791,6 +807,7 @@ function App() {
       loadMyReactions(meId).then(setMyReactions).catch(() => undefined);
       loadPlaceEvents().then(setPlaceEvents).catch(() => undefined);
       loadFriendHighlights().then(setHighlights).catch(() => undefined);
+      loadMyHighlightArchive(meId).then(setArchive).catch(() => undefined);
       loadVisibleZones().then(setZones).catch(() => undefined);
       loadMyGroups().then(setGroups).catch(() => undefined);
       clearPushBadge();
@@ -1207,17 +1224,18 @@ function App() {
       const mediaUrl = input.file ? await uploadHighlightPhoto(profile.id, input.file) : null;
       const geo = input.attachLocation && location ? { lat: location.lat, lng: location.lng } : null;
       await postHighlight(profile.id, input.body, mediaUrl, geo);
+      const optimistic: Highlight = {
+        id: `local-${Date.now()}`, user_id: profile.id, body: input.body.trim(), media_url: mediaUrl,
+        created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+        lat: geo?.lat ?? null, lng: geo?.lng ?? null,
+      };
       setHighlights(current => ({
         ...current,
-        [profile.id]: [
-          {
-            id: `local-${Date.now()}`, user_id: profile.id, body: input.body.trim(), media_url: mediaUrl,
-            created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86_400_000).toISOString(),
-            lat: geo?.lat ?? null, lng: geo?.lng ?? null,
-          },
-          ...(current[profile.id] || []),
-        ],
+        [profile.id]: [optimistic, ...(current[profile.id] || [])],
       }));
+      // Every post eventually lands in the archive too — add it now rather
+      // than waiting a full day for the next archive reload to notice it.
+      setArchive(current => [optimistic, ...current]);
       setPostingHighlight(false);
       notify('Story posted — friends can see it for the next 24 hours ✨');
       loadFriendHighlights().then(setHighlights).catch(() => undefined);
@@ -1235,12 +1253,17 @@ function App() {
       ...current,
       [profile.id]: (current[profile.id] || []).filter(h => h.id !== id),
     }));
+    // A deleted story might be live, archived, or (if this came from the
+    // archive viewer) both stale in the rail and present here — filtering
+    // both is a no-op wherever the id isn't found.
+    setArchive(current => current.filter(h => h.id !== id));
     if (id.startsWith('local-')) return;
     try {
       await deleteHighlight(id);
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Delete failed — please try again later');
       loadFriendHighlights().then(setHighlights).catch(() => undefined);
+      loadMyHighlightArchive(profile.id).then(setArchive).catch(() => undefined);
     }
   }
 
@@ -1523,6 +1546,7 @@ function App() {
         <AddFriendPanel
           me={profile}
           results={addResults}
+          suggestions={suggestions}
           sentIds={sentIds}
           friendIds={friendIds}
           initialQuery={inviteQuery}
@@ -1557,6 +1581,16 @@ function App() {
           isMine={highlightViewerId === profile.id}
           highlights={highlights[highlightViewerId] || []}
           onClose={() => setHighlightViewerId(null)}
+          onDelete={removeHighlight}
+        />
+      )}
+
+      {archiveOpen && archive.length > 0 && (
+        <HighlightViewer
+          author={profile}
+          isMine
+          highlights={archive}
+          onClose={() => setArchiveOpen(false)}
           onDelete={removeHighlight}
         />
       )}
@@ -1606,7 +1640,7 @@ function App() {
                 highlights={highlights}
                 busy={highlightBusy}
                 onAddMine={() => setPostingHighlight(true)}
-                onOpen={setHighlightViewerId}
+                onOpen={(id) => { setArchiveOpen(false); setHighlightViewerId(id); }}
               />
               <RequestsInbox requests={requests} busyIds={requestBusy} onRespond={respondToRequest} />
               <FriendRail
@@ -1725,6 +1759,24 @@ function App() {
               </button>
 
               <StatusEditor profile={profile} onSave={saveStatus} />
+
+              <button
+                type="button"
+                className="privacy-note link"
+                disabled={archive.length === 0}
+                onClick={() => { setHighlightViewerId(null); setArchiveOpen(true); }}
+              >
+                <Archive size={19} />
+                <div>
+                  <b>Story archive</b>
+                  <small>
+                    {archive.length === 0
+                      ? 'Stories you post will be saved here after friends stop seeing them'
+                      : `${archive.length} ${archive.length === 1 ? 'story' : 'stories'} — only visible to you`}
+                  </small>
+                </div>
+                {archive.length > 0 && <ExternalLink size={15} className="external-icon" />}
+              </button>
 
               <div className="eyebrow">My check-ins</div>
               {myVisits.length === 0 ? (
