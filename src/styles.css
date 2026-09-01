@@ -439,7 +439,7 @@ button { color: inherit; }
 .person-card {
   position: absolute; z-index: 530; left: 0; right: 0; bottom: 0; top: auto;
   width: auto;
-  max-height: 74%;
+  max-height: 69%;
   display: flex; flex-direction: column;
   padding: 12px 20px calc(var(--dock-h) + var(--safe-bottom) + 16px);
   border: 2px solid rgba(255,255,255,.9); border-width: 2px 0 0; border-radius: 30px 30px 0 0; background: rgba(255,255,255,.96); box-shadow: var(--shadow); text-align: center; backdrop-filter: blur(24px);
