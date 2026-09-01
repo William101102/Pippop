@@ -254,6 +254,11 @@ function App() {
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Who the map is currently centered on — set by focusFriend/openFriend,
+  // and what the friend rails use for their "active" highlight even in the
+  // in-between moment where a friend has been focused but the card isn't
+  // open yet. selectedId (the card) implies this; this doesn't imply that.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [ghostMode, setGhostMode] = useState<GhostMode>('precise');
   const [friendModes, setFriendModes] = useState<Record<string, GhostMode>>({});
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
@@ -640,9 +645,27 @@ function App() {
     map.current.flyTo(map.current.unproject(pt, z), z, { animate: true, duration: 0.8 });
   }, []);
 
+  /**
+   * Picking a friend from any list (the map-peek rail, the Friends tab, the
+   * Explore/nearby ranking) is a two-step flow, deliberately: this step only
+   * pans the map to them — no card, nothing covering their pin — so "where
+   * are they" gets answered first. Tapping their actual pin on the map is
+   * the second, separate step that opens the interaction card (openFriend,
+   * below); by then you've already seen where they are, so the card
+   * covering the pin is no longer the problem it is when it's the very
+   * first thing that happens.
+   */
+  const focusFriend = useCallback((friend: Friend) => {
+    haptic('select');
+    setFocusedId(friend.id);
+    setPanel(null);
+    if (friend.location) focusMapOn(friend.location.lat, friend.location.lng);
+  }, [focusMapOn]);
+
   const openFriend = useCallback((friend: Friend) => {
     haptic('select');
     setSelectedId(friend.id);
+    setFocusedId(friend.id);
     setPanel(null);
     // No pan here — the PersonCard sheet hasn't mounted yet, so its real
     // height isn't known. The effect below (keyed on selectedId) does the
@@ -1486,9 +1509,11 @@ function App() {
             me={profile}
             friends={friends}
             unread={unread}
-            activeId={null}
-            onSelectMe={() => { setSelectedId(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
-            onSelectFriend={openFriend}
+            // `selected` is always null in this branch (that's the guard
+            // above) — only `focusedId` can be set here.
+            activeId={focusedId}
+            onSelectMe={() => { setSelectedId(null); setFocusedId(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
+            onSelectFriend={focusFriend}
             onAddFriend={() => setPanel('add')}
           />
         </div>
@@ -1588,9 +1613,9 @@ function App() {
                 me={profile}
                 friends={friends}
                 unread={unread}
-                activeId={selected?.id ?? null}
-                onSelectMe={() => { setSelectedId(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
-                onSelectFriend={openFriend}
+                activeId={selected ? selected.id : focusedId}
+                onSelectMe={() => { setSelectedId(null); setFocusedId(null); if (location) focusMapOn(location.lat, location.lng); else locateMe(); }}
+                onSelectFriend={focusFriend}
                 onAddFriend={() => setPanel('add')}
               />
               <div className="search"><Search size={18} /><input placeholder="Search friends" value={search} onChange={e => setSearch(e.target.value)} /></div>
@@ -1615,7 +1640,7 @@ function App() {
                 {filtered.map(f => {
                   const streak = streakInfo(f.streak_days, f.last_interaction_on, f.streak_grace_value, f.streak_grace_days);
                   return (
-                  <button className="friend-row" key={f.id} type="button" onClick={() => openFriend(f)}>
+                  <button className="friend-row" key={f.id} type="button" onClick={() => focusFriend(f)}>
                     <Avatar profile={f} showStatus />
                     <div>
                       <b>
@@ -1657,7 +1682,7 @@ function App() {
               places={nearbyPlaces}
               loading={nearbyLoading}
               onCheckIn={() => setCheckInOpen(true)}
-              onSelectFriend={openFriend}
+              onSelectFriend={focusFriend}
               onFocusPlace={focusMapOn}
             />
           )}
