@@ -1166,7 +1166,7 @@ begin
     coalesce(sender_name, 'Friend'),
     case new.kind
       when 'wave' then 'waved at you 👋'
-      when 'whats_up' then 'asked what you\'re up to 👀'
+      when 'whats_up' then 'asked what you''re up to 👀'
       else left(coalesce(new.body, ''), 120)
     end
   );
