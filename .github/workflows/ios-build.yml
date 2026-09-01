@@ -56,10 +56,18 @@ jobs:
           # of these dependency trees use them) throw in non-interactive CI —
           # a very common cause of exactly this "stops dead after resolving
           # packages" symptom.
+          # A concrete device destination (name:'iPhone 16') failed because
+          # the runner's selected Xcode didn't have a matching simulator
+          # runtime installed — which specific devices/runtimes are
+          # pre-downloaded varies by image and changes over time. We don't
+          # need to launch the app, only compile it, so `generic/platform=iOS
+          # Simulator` (the "Any iOS Simulator Device" SDK, no specific
+          # device/runtime required) is the right destination for a build-only
+          # check and sidesteps that entirely.
           xcodebuild \
             -project Pinpop.xcodeproj \
             -scheme Pinpop \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             -skipPackagePluginValidation \
             -skipMacroValidation \
