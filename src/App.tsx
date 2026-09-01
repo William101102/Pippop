@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
-  BatteryCharging, Bell, Camera, ChevronDown, Footprints, Ghost, Loader2, LocateFixed,
-  LogOut, MapPin, MessageCircle, Search, Share2, Sparkles, Star, Users, X,
+  BatteryCharging, Bell, Camera, ChevronDown, Ghost, Loader2, LocateFixed,
+  LogOut, MapPin, MessageCircle, Search, Share2, Sparkles, Star, User, Users, X,
 } from 'lucide-react';
 import { AddFriendPanel } from './components/AddFriendPanel';
 import { Avatar } from './components/Avatar';
@@ -1354,7 +1354,7 @@ function App() {
         <button className="center-action" type="button" disabled={waving} onClick={() => { haptic('heavy'); waveAtEveryone(); }} aria-label="Wave at all friends">
           <span>{waving ? '…' : '👋'}</span>
         </button>
-        <button className={panel === 'world' ? 'active' : ''} type="button" onClick={() => switchPanel('world')}><Footprints /><span>Footprints</span></button>
+        <button className={panel === 'world' ? 'active' : ''} type="button" onClick={() => switchPanel('world')}><User /><span>Me</span></button>
         <button className={panel === 'messages' ? 'active' : ''} type="button" onClick={() => switchPanel('messages')}>
           <MessageCircle /><span>Messages</span>
           {totalUnread > 0 && <span className="dot-badge">{totalUnread > 9 ? '9+' : totalUnread}</span>}

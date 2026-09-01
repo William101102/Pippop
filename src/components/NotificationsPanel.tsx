@@ -34,7 +34,15 @@ export function NotificationsPanel({
     reactions.length === 0 &&
     placeEvents.length === 0;
 
-  if (empty) return <p className="muted empty-hint">No new notifications right now 🎉</p>;
+  if (empty) {
+    return (
+      <div className="empty-state">
+        <span className="empty-art">🔔</span>
+        <b>You're all caught up</b>
+        <p>Friend requests, waves, and check-ins will show up here.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="notifications-panel">
