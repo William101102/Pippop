@@ -32,9 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
-
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -43,6 +40,29 @@ jobs:
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      - name: Select an Xcode that actually has an iOS Simulator runtime
+        run: |
+          set -e
+          # Pinning to one Xcode_*.app by name (what this used to do) bit us:
+          # the same pin worked on one run and failed on the very next one,
+          # because which Xcode/Simulator runtime combos are pre-installed
+          # varies between the macOS runner VM images GitHub hands out for
+          # the same "macos-15" label. So instead: try every installed Xcode,
+          # newest first, and use the first one whose `-showdestinations`
+          # actually lists an iOS Simulator — whatever that turns out to be.
+          for XC in $(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -Vr); do
+            echo "Trying $XC"
+            sudo xcode-select -s "$XC"
+            if xcodebuild -showdestinations -project Pinpop.xcodeproj -scheme Pinpop 2>/dev/null | grep -q "platform:iOS Simulator"; then
+              echo "Using $XC — has an iOS Simulator runtime"
+              xcodebuild -version
+              exit 0
+            fi
+          done
+          echo "No installed Xcode on this runner has an iOS Simulator runtime. Installed Xcodes:"
+          ls /Applications | grep Xcode || true
+          exit 1
 
       - name: Build for iOS Simulator
         run: |
@@ -55,15 +75,10 @@ jobs:
           # "trust this package plugin/macro" prompt that SPM plugins (a few
           # of these dependency trees use them) throw in non-interactive CI —
           # a very common cause of exactly this "stops dead after resolving
-          # packages" symptom.
-          # A concrete device destination (name:'iPhone 16') failed because
-          # the runner's selected Xcode didn't have a matching simulator
-          # runtime installed — which specific devices/runtimes are
-          # pre-downloaded varies by image and changes over time. We don't
-          # need to launch the app, only compile it, so `generic/platform=iOS
-          # Simulator` (the "Any iOS Simulator Device" SDK, no specific
-          # device/runtime required) is the right destination for a build-only
-          # check and sidesteps that entirely.
+          # packages" symptom. We don't need to launch the app, only compile
+          # it, so `generic/platform=iOS Simulator` (no specific device/
+          # runtime pinned) is the right destination for a build-only check —
+          # the previous step already made sure the selected Xcode has one.
           xcodebuild \
             -project Pinpop.xcodeproj \
             -scheme Pinpop \
