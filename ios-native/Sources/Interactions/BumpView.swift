@@ -54,6 +54,30 @@ struct BumpView: View {
             }
             .padding(.top, 30)
         }
+        // `fullScreenCover` (how MapScreen presents this) gives up the sheet's
+        // swipe-down-to-dismiss for free, and this screen had no on-screen way
+        // out either — you were stuck here until a bump actually happened. A
+        // close button, always available regardless of phase, fixes that.
+        // `.safeAreaInset` rather than a ZStack/overlay sibling keeps it clear
+        // of the Dynamic Island and guarantees it's actually tappable there —
+        // see the comment in MapScreen.swift for why a plain sibling of a
+        // view that calls `.ignoresSafeArea()` can't be trusted to stay in a
+        // touchable safe area.
+        .safeAreaInset(edge: .top) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 36, height: 36)
+                        .floatingCard(radius: 18)
+                }
+                .pressable()
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+        }
         .onAppear {
             guard let me = auth.profile else { return }
             bump.start(userId: me.id, displayName: me.displayName) { met in

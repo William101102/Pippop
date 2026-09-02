@@ -11,6 +11,12 @@ struct PersonCard: View {
     let onThrow: (Throwable, Double) -> Void
 
     @Environment(LocationService.self) private var location
+    @State private var milestone: Int?
+    @State private var milestoneHideTask: Task<Void, Never>?
+
+    /// Escalating milestones, mirroring the web app's own `STREAK_MILESTONES`
+    /// — big enough gaps that crossing one actually feels like an event.
+    private static let streakMilestones = [3, 7, 14, 30, 50, 100, 200, 365]
 
     var body: some View {
         ScrollView {
@@ -32,6 +38,18 @@ struct PersonCard: View {
                         .foregroundStyle(Theme.coral)
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background(Theme.coral.opacity(0.12), in: Capsule())
+                }
+
+                if let milestone {
+                    Label("\(milestone)-day streak!", systemImage: "sparkles")
+                        .font(Theme.Font.body(12, weight: .heavy))
+                        .foregroundStyle(Color(hex: 0x8A5A00))
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(
+                            LinearGradient(colors: [Color(hex: 0xFFE08A), Color(hex: 0xFF9F5A)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            in: Capsule()
+                        )
+                        .transition(.scale.combined(with: .opacity))
                 }
 
                 if let distance = distanceText {
@@ -69,8 +87,11 @@ struct PersonCard: View {
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 30)
+            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: milestone)
         }
         .background(Theme.ground)
+        .task(id: friend.streakDays) { checkMilestone() }
+        .onDisappear { milestoneHideTask?.cancel() }
     }
 
     private var distanceText: String? {
@@ -83,5 +104,31 @@ struct PersonCard: View {
         return metres < 1000
             ? String(format: "%.0f m", metres)
             : String(format: "%.1f km", metres / 1000)
+    }
+
+    /// Fires once per device the first time this friend's streak is seen
+    /// crossing a milestone — a purely client-side "did you notice" nudge,
+    /// no schema needed. Port of the web app's `useEffect` in `PersonCard`,
+    /// using `UserDefaults` in place of `localStorage`.
+    private func checkMilestone() {
+        let key = "pinpop-streak-seen-\(friend.id.uuidString)"
+        let defaults = UserDefaults.standard
+        let seen = defaults.integer(forKey: key)
+        let current = friend.streakDays
+
+        // Scan high-to-low so a friend already on a long streak doesn't
+        // falsely celebrate "3-day streak!" the first time their card opens.
+        if let crossed = Self.streakMilestones.reversed().first(where: { current >= $0 && seen < $0 }) {
+            Haptics.shared.play(.success)
+            milestone = crossed
+            defaults.set(current, forKey: key)
+            milestoneHideTask?.cancel()
+            milestoneHideTask = Task {
+                try? await Task.sleep(for: .seconds(2.8))
+                if !Task.isCancelled { milestone = nil }
+            }
+        } else if current != seen {
+            defaults.set(current, forKey: key)
+        }
     }
 }

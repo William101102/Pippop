@@ -75,12 +75,18 @@ struct PinpopShortcuts: AppShortcutsProvider {
     }
 }
 
-/// Lets an intent hand a destination to the running UI.
+/// Lets an intent — or an incoming `pinpop://` link — hand a destination to
+/// the running UI.
 @MainActor
 @Observable
 final class DeepLink {
     static let shared = DeepLink()
-    enum Destination { case bump }
+    enum Destination: Equatable {
+        case bump
+        /// From `pinpop://add/<username>` — see `InviteRouter` in
+        /// `PinpopApp.swift`. `MapScreen` opens Explore with this prefilled.
+        case addFriend(username: String)
+    }
     var pending: Destination?
     private init() {}
 }

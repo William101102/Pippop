@@ -58,8 +58,15 @@ struct SignInView: View {
                         }
                     } label: {
                         HStack(spacing: 10) {
-                            Image("google-logo")
+                            // TODO: swap for Google's official multicolor "G" mark
+                            // (developers.google.com/identity/branding-guidelines)
+                            // before shipping — "google-logo" was never added to an
+                            // asset catalog (this app has no Assets.xcassets yet), so
+                            // Image("google-logo") crashed/rendered nothing. This SF
+                            // Symbol is a placeholder that needs no asset catalog.
+                            Image(systemName: "g.circle.fill")
                                 .resizable().scaledToFit().frame(width: 18, height: 18)
+                                .foregroundStyle(.blue)
                             Text("Continue with Google")
                                 .font(Theme.Font.body(15, weight: .bold))
                         }

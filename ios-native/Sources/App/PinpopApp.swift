@@ -12,6 +12,14 @@ struct PinpopApp: App {
                 .environment(auth)
                 .environment(location)
                 .tint(Theme.violet)
+                // Every surface in this app (Theme.ground, Theme.surface,
+                // Theme.ink) is a hardcoded light palette with no dark-mode
+                // counterpart — it was never meant to adapt. Without this,
+                // a device in Dark Mode still gets system-drawn text
+                // (TextField input, in particular) in white, which lands on
+                // top of our own hardcoded-white card backgrounds and
+                // disappears entirely.
+                .preferredColorScheme(.light)
                 .task { await auth.start() }
                 .onOpenURL { url in
                     // Google's OAuth callback, plus pinpop:// invite links.
@@ -104,6 +112,8 @@ struct CompleteProfileView: View {
     private func field(_ placeholder: String, text: Binding<String>) -> some View {
         TextField(placeholder, text: text)
             .font(Theme.Font.body(15, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .tint(Theme.violet)
             .padding(.horizontal, 16)
             .frame(height: 52)
             .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -113,9 +123,18 @@ struct CompleteProfileView: View {
 
 /// `pinpop://add/<username>` and `?t=<token>` links, matching the web app's
 /// invite semantics in `src/lib/geo.ts`.
+///
+/// Routes to Explore with the username prefilled. Actually *creating* the
+/// friendship from a redeemed token is still a stub on the Explore screen —
+/// see the doc comment on `ExploreView` for why.
 enum InviteRouter {
+    @MainActor
     static func handle(_ url: URL) {
-        guard url.scheme == "pinpop" else { return }
-        // Wire into the friends flow once that screen exists.
+        guard url.scheme == "pinpop", url.host == "add" else { return }
+        let username = url.pathComponents
+            .first { $0 != "/" }
+            ?? url.lastPathComponent
+        guard !username.isEmpty else { return }
+        DeepLink.shared.pending = .addFriend(username: username)
     }
 }

@@ -5,6 +5,13 @@
 #
 # Hand-written .xcodeproj files are unreviewable and break easily; this YAML is
 # the source of truth. Regenerate after adding files — no manual target edits.
+#
+# IMPORTANT: `xcodegen generate` throws the whole .xcodeproj away and rebuilds
+# it from this file. Anything set only through Xcode's UI — Signing &
+# Capabilities' Team picker, a Configurations → xcconfig assignment, a
+# capability toggled off — does NOT survive the next regenerate. Everything
+# that setup screen walked you through now lives here instead, specifically
+# so that stops being true.
 
 name: Pinpop
 options:
@@ -14,10 +21,23 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# Wires Secrets.xcconfig (gitignored, per-developer) to both build
+# configurations declaratively — this used to be a manual step in Xcode's
+# Project → Info → Configurations screen, which `xcodegen generate` silently
+# undoes every time it's run, because it isn't recorded anywhere this file
+# can see. Now it is.
+configFiles:
+  Debug: Sources/Config/Secrets.xcconfig
+  Release: Sources/Config/Secrets.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: "" # <- put your Apple Developer Team ID here
+    # From Secrets.xcconfig (see Secrets.example.xcconfig) — a personal Team
+    # ID isn't a secret exactly, but it's tied to one developer's Apple ID,
+    # so it lives in the gitignored file with everything else per-developer
+    # rather than being hardcoded here for whoever clones this repo next.
+    DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
@@ -50,6 +70,10 @@ targets:
         # Xcode refuses to embed it ("Embedded binary's bundle identifier is
         # not prefixed with the parent app's bundle identifier").
         PRODUCT_BUNDLE_IDENTIFIER: com.pinpop.app
+        # Belt and suspenders alongside the project-level DEVELOPMENT_TEAM
+        # above — every target that needs signing sets it explicitly too, so
+        # nothing depends on inheritance behaving a particular way.
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
     sources:
       - path: Sources
         excludes:
@@ -113,8 +137,18 @@ targets:
     entitlements:
       path: Sources/Config/Pinpop.entitlements
       properties:
-        com.apple.developer.applesignin: [Default]
-        aps-environment: development
+        # Sign In with Apple and Push Notifications are BOTH hard-unsupported
+        # on a free/personal Apple Developer team — not a config bug, Apple's
+        # own error is explicit: "Personal development teams... do not
+        # support the Sign In with Apple and Push Notifications capabilities."
+        # Previously these were removed by hand in Xcode's Signing &
+        # Capabilities UI each time, which `xcodegen generate` then quietly
+        # re-added on the next regenerate (since this file never stopped
+        # declaring them) — that's what just broke the build again. Once
+        # there's a paid Apple Developer Program membership on this team,
+        # uncomment both lines below and regenerate.
+        # com.apple.developer.applesignin: [Default]
+        # aps-environment: development
         com.apple.security.application-groups:
           - group.com.pinpop.app
 
@@ -156,6 +190,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pinpop.app.widgets
         SKIP_INSTALL: YES
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
 
   PinpopTests:
     type: bundle.unit-test
@@ -164,3 +199,6 @@ targets:
       - path: Tests
     dependencies:
       - target: Pinpop
+    settings:
+      base:
+        DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)

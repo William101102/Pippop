@@ -1,0 +1,77 @@
+name: iOS build check (Simulator)
+
+# Compiles the never-built native app on a free macOS runner and uploads the
+# .app bundle so it can be dragged into Appetize.io (or any Simulator) for a
+# look at the UI. This is a SIMULATOR build — it needs no Apple Developer
+# account and no code signing, but it therefore also cannot exercise
+# NearbyInteraction (UWB bump), Core Motion (shake/knock), or Core Haptics,
+# none of which the Simulator implements. See ios-native/README.md's "First
+# build watchlist" — this is expected to go red a few times before it's
+# green; read the job log for the exact file/line and fix forward.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios-native/**'
+      - '.github/workflows/ios-build.yml'
+
+jobs:
+  build-simulator:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios-native
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Placeholder secrets (build-only — no real backend calls happen in a Simulator compile check)
+        run: cp Sources/Config/Secrets.example.xcconfig Sources/Config/Secrets.xcconfig
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Pinpop.xcodeproj \
+            -scheme Pinpop \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build \
+          | tee build.log \
+          | xcpretty || (echo "---- full raw log ----" && cat build.log && exit 1)
+
+      - name: Locate built .app
+        if: success()
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Pinpop.app" -path "*Debug-iphonesimulator*" | head -1)
+          echo "Found: $APP_PATH"
+          mkdir -p out
+          cp -R "$APP_PATH" out/Pinpop.app
+
+      - name: Zip .app for upload
+        if: success()
+        run: cd out && zip -r Pinpop-simulator.zip Pinpop.app
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Pinpop-simulator-app
+          path: ios-native/out/Pinpop-simulator.zip
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log
+          path: ios-native/build.log
+          retention-days: 14

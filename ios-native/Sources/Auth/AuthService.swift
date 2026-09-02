@@ -191,6 +191,57 @@ final class AuthService {
         }
     }
 
+    /// Edits from the Me tab — display name, status, and username. Avatar
+    /// and everything Ghost-Mode-related go through their own paths
+    /// (`FriendsService.setGhostMode`, avatar upload once that screen
+    /// exists), so this stays a narrow, low-risk write.
+    ///
+    /// `username` is optional so callers that only touch name/status (none
+    /// currently) don't have to pass the unchanged value; `MeView` always
+    /// passes it.
+    func updateProfile(displayName: String, statusText: String?, username: String? = nil) async -> String? {
+        guard let userId = profile?.id else { return "Not signed in" }
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return "Display name can't be empty" }
+
+        do {
+            // Two payload shapes rather than one with an optional `username`
+            // — a Codable `nil` still encodes as JSON `null`, and PostgREST
+            // would happily write that over the existing value. Only send
+            // the key at all when there's actually a new username.
+            if let username {
+                let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard trimmed.count >= 3 else { return "Username needs at least 3 characters" }
+                struct Update: Encodable {
+                    let displayName: String
+                    let statusText: String?
+                    let username: String
+                }
+                try await Backend.client
+                    .from("profiles")
+                    .update(Update(displayName: trimmedName, statusText: statusText, username: trimmed))
+                    .eq("id", value: userId)
+                    .execute()
+            } else {
+                struct Update: Encodable {
+                    let displayName: String
+                    let statusText: String?
+                }
+                try await Backend.client
+                    .from("profiles")
+                    .update(Update(displayName: trimmedName, statusText: statusText))
+                    .eq("id", value: userId)
+                    .execute()
+            }
+            await loadProfile(for: userId)
+            return nil
+        } catch {
+            // 23505 = unique violation — same rule as completeProfile.
+            if "\(error)".contains("23505") { return "That username is already taken" }
+            return error.localizedDescription
+        }
+    }
+
     // MARK: - Nonce helpers
 
     private static func randomNonceString(length: Int = 32) -> String {

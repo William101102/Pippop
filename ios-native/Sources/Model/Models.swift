@@ -85,6 +85,68 @@ struct Friend: Identifiable, Hashable, Sendable {
     }
 }
 
+/// A pending incoming friend request — the requester's own profile, plus the
+/// `friendships` row id needed to accept/decline it.
+struct FriendRequest: Identifiable, Hashable, Sendable {
+    let relId: UUID
+    let profile: Profile
+    var id: UUID { relId }
+}
+
+/// Mirrors `messages.kind` — same catalog as the web app's `MessageKind`.
+enum MessageKind: String, Codable, Sendable {
+    case text, emoji, wave, image, location
+    case whatsUp = "whats_up"
+}
+
+/// A 1:1 or group message. Exactly one of `recipientId`/`groupId` is set,
+/// matching the `messages_recipient_or_group` check constraint.
+struct Message: Codable, Identifiable, Hashable, Sendable {
+    let id: UUID
+    let senderId: UUID
+    var recipientId: UUID?
+    var groupId: UUID?
+    var body: String
+    let createdAt: Date
+    var kind: MessageKind?
+    var readAt: Date?
+}
+
+/// A group chat, with its member profiles already attached.
+struct ChatGroup: Identifiable, Hashable, Sendable {
+    let id: UUID
+    var name: String
+    let ownerId: UUID
+    let createdAt: Date
+    var members: [Profile]
+}
+
+/// An emoji dropped on a friend's pin — a throw, a wave, or a Bump 🤝. Rows
+/// expire an hour after being sent (`map_reactions.expires_at`).
+struct MapReaction: Codable, Identifiable, Hashable, Sendable {
+    let id: UUID
+    let senderId: UUID
+    let targetId: UUID
+    let emoji: String
+    let createdAt: Date
+}
+
+enum PlaceEventKind: String, Codable, Sendable {
+    case arrive, leave
+}
+
+/// "Alex arrived at Office" — written by the mover's own device for the
+/// notifications feed.
+struct PlaceEvent: Codable, Identifiable, Hashable, Sendable {
+    let id: UUID
+    let userId: UUID
+    let kind: PlaceEventKind
+    let label: String
+    var lat: Double?
+    var lng: Double?
+    let createdAt: Date
+}
+
 /// A fix from CoreLocation, normalised before it reaches the upload gate.
 struct Fix: Sendable, Equatable {
     let lat: Double
@@ -101,5 +163,15 @@ struct Fix: Sendable, Equatable {
         lng = location.coordinate.longitude
         accuracy = location.horizontalAccuracy >= 0 ? location.horizontalAccuracy : nil
         speed = location.speed >= 0 ? location.speed : nil
+    }
+}
+
+extension Date {
+    /// Short relative label ("3m ago", "yesterday") for chat and
+    /// notification rows — the Swift equivalent of the web app's `timeAgo`.
+    var relativeLabel: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: self, relativeTo: .now)
     }
 }
