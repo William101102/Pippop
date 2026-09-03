@@ -32,38 +32,19 @@ struct PersonCard: View {
                     .font(Theme.Font.body(11, weight: .medium))
                     .foregroundStyle(Theme.muted)
 
-                if friend.streakDays > 0 {
-                    Label("\(friend.streakDays)-day streak", systemImage: "flame.fill")
-                        .font(Theme.Font.body(12, weight: .heavy))
-                        .foregroundStyle(Theme.coral)
-                        .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(Theme.coral.opacity(0.12), in: Capsule())
-                }
+                StreakBadge(info: friend.streak)
 
                 if let milestone {
                     Label("\(milestone)-day streak!", systemImage: "sparkles")
                         .font(Theme.Font.body(12, weight: .heavy))
-                        .foregroundStyle(Color(hex: 0x8A5A00))
+                        .foregroundStyle(Theme.warnInk)
                         .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(
-                            LinearGradient(colors: [Color(hex: 0xFFE08A), Color(hex: 0xFF9F5A)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            in: Capsule()
-                        )
+                        .background(Theme.streakMilestoneGradient, in: Capsule())
                         .transition(.scale.combined(with: .opacity))
                 }
 
-                if let distance = distanceText {
-                    HStack(spacing: 8) {
-                        Image(systemName: "location.north.line.fill")
-                        Text(distance).font(Theme.Font.body(15, weight: .bold))
-                        Text(friend.isLive ? "Live" : "Last seen")
-                            .font(Theme.Font.body(11, weight: .medium))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    .foregroundStyle(Theme.ink)
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .frame(maxWidth: .infinity)
-                    .background(Color(hex: 0xF4F0F6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                if let compass = compassInfo {
+                    PersonCompassCard(distanceLabel: compass.distance, directionLabel: compass.direction, isLive: friend.isLive, headingDegrees: compass.heading)
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -94,16 +75,37 @@ struct PersonCard: View {
         .onDisappear { milestoneHideTask?.cancel() }
     }
 
-    private var distanceText: String? {
+    /// Distance, 16-point compass direction, and true bearing to the friend
+    /// — port of the web app's `fmtDist`/`compassLabel`/`bearingDeg`.
+    private var compassInfo: (distance: String, direction: String, heading: Double)? {
         guard
             let mine = location.current,
             let theirs = friend.location
         else { return nil }
-        let metres = CLLocation(latitude: mine.lat, longitude: mine.lng)
-            .distance(from: CLLocation(latitude: theirs.lat, longitude: theirs.lng))
-        return metres < 1000
+        let from = mine.coordinate
+        let to = theirs.coordinate
+        let metres = CLLocation(latitude: from.latitude, longitude: from.longitude)
+            .distance(from: CLLocation(latitude: to.latitude, longitude: to.longitude))
+        let distance = metres < 1000
             ? String(format: "%.0f m", metres)
             : String(format: "%.1f km", metres / 1000)
+        let heading = Self.bearingDegrees(from: from, to: to)
+        return (distance, Self.compassLabel(heading), heading)
+    }
+
+    private static func bearingDegrees(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
+        let lat1 = from.latitude * .pi / 180, lat2 = to.latitude * .pi / 180
+        let dLon = (to.longitude - from.longitude) * .pi / 180
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        let degrees = atan2(y, x) * 180 / .pi
+        return (degrees + 360).truncatingRemainder(dividingBy: 360)
+    }
+
+    private static func compassLabel(_ heading: Double) -> String {
+        let points = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        let index = Int((heading / 45).rounded()) % 8
+        return points[index]
     }
 
     /// Fires once per device the first time this friend's streak is seen
@@ -129,6 +131,98 @@ struct PersonCard: View {
             }
         } else if current != seen {
             defaults.set(current, forKey: key)
+        }
+    }
+}
+
+/// Port of `.person-compass`/`.compass-ring` — a small heading dial plus the
+/// distance and live/last-seen state, replacing a plain distance pill.
+private struct PersonCompassCard: View {
+    let distanceLabel: String
+    let directionLabel: String
+    let isLive: Bool
+    let headingDegrees: Double
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .stroke(Color(hex: 0xD9D0EA), lineWidth: 2)
+                    .background(Circle().fill(Theme.surface))
+                Image(systemName: "arrowtriangle.up.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.coral)
+                    .offset(y: -10)
+                    .rotationEffect(.degrees(headingDegrees))
+            }
+            .frame(width: 46, height: 46)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(distanceLabel)
+                    .font(Theme.Font.display(18))
+                    .foregroundStyle(Theme.ink)
+                Text("\(directionLabel) · \(isLive ? "Live" : "Last seen")")
+                    .font(Theme.Font.body(11, weight: .bold))
+                    .foregroundStyle(Theme.muted)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(colors: [Color(hex: 0xF4F0FF), Theme.warnSoft], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+    }
+}
+
+/// Port of `.streak-badge` and its tier/at-risk/repairing/can-repair color
+/// variants — see `StreakInfo` for the underlying math.
+struct StreakBadge: View {
+    let info: StreakInfo
+    @State private var pulse = false
+
+    var body: some View {
+        Group {
+            if info.repairing {
+                text("Repairing streak — \(info.repairDaysLeft) more day\(info.repairDaysLeft == 1 ? "" : "s") in a row restores it to \(info.repairTarget)", icon: "🩹")
+                    .foregroundStyle(Theme.infoInk)
+                    .background(
+                        LinearGradient(colors: [Color(hex: 0xEAF6FF), Color(hex: 0xDFF0FF)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: Capsule()
+                    )
+            } else if info.canRepair {
+                text("Missed yesterday — interact today to start repairing it back to \(info.repairTarget)", icon: "💔")
+                    .foregroundStyle(Theme.dangerInk)
+                    .background(Theme.dangerSoft, in: Capsule())
+                    .opacity(pulse ? 0.55 : 1)
+                    .onAppear { startPulse() }
+            } else if info.days > 0 {
+                text("\(info.days)-day streak", icon: info.icon)
+                    .foregroundStyle(Theme.warnInk)
+                    .background(
+                        info.tier == .blaze || info.tier == .legend ? AnyShapeStyle(Theme.streakHotGradient) : AnyShapeStyle(Theme.streakBaseGradient),
+                        in: Capsule()
+                    )
+                    .opacity(info.atRisk && pulse ? 0.55 : 1)
+                    .onAppear { if info.atRisk { startPulse() } }
+            }
+        }
+    }
+
+    private func text(_ label: String, icon: String) -> some View {
+        HStack(spacing: 5) {
+            Text(icon)
+            Text(label)
+        }
+        .font(Theme.Font.body(11, weight: .heavy))
+        .multilineTextAlignment(.leading)
+        .padding(.horizontal, 14).padding(.vertical, 7)
+    }
+
+    private func startPulse() {
+        withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+            pulse = true
         }
     }
 }

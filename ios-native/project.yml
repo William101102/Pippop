@@ -122,6 +122,22 @@ targets:
           - _pinpop-bump._tcp
           - _pinpop-bump._udp
 
+        # Fredoka (display/headline) + DM Sans (body) — the exact families the
+        # web app pulls from Google Fonts (`src/styles.css`'s @import). Static
+        # weight instances sliced from the real variable fonts with
+        # `fonttools varLib.instancer`, since neither family ships static .ttfs
+        # and SwiftUI's `Font.custom(_:size:)` needs a fixed-weight file per
+        # name — see Sources/Resources/Fonts/. Bundled files must be listed
+        # here or CoreText never registers them at launch.
+        UIAppFonts:
+          - Fredoka-Medium.ttf
+          - Fredoka-SemiBold.ttf
+          - Fredoka-Bold.ttf
+          - DMSans-Medium.ttf
+          - DMSans-SemiBold.ttf
+          - DMSans-Bold.ttf
+          - DMSans-ExtraBold.ttf
+
         # --- Injected from Secrets.xcconfig (never committed) --------------
         SUPABASE_URL: $(SUPABASE_URL)
         SUPABASE_ANON_KEY: $(SUPABASE_ANON_KEY)

@@ -1,8 +1,33 @@
 # Known Issues & Limitations — Pinpop iOS (native)
 
-This file tracks the current, honest state of `ios-native/` (the SwiftUI rewrite) — what's built, what's simplified on purpose, and what's still missing. Last rewritten after a session that ported nearly all of the web app's remaining feature set onto native (friend requests, chat, groups, Highlights/stories, check-ins, Zenlands, footprints, notifications) and fixed several schema bugs that had been silently broken since earlier in the project.
+This file tracks the current, honest state of `ios-native/` (the SwiftUI rewrite) — what's built, what's simplified on purpose, and what's still missing.
 
-## What shipped this pass
+## Design-fidelity pass (matching the web app's exact look)
+
+William asked for the native UI to match the web app's actual visual design ("完完全全" — completely, not just close), not only its features. This pass read all 1081 lines of `src/styles.css` (the web app's full design system — CSS custom properties, every component class) and ported the parts that are shared, reusable primitives, since those cascade correctly to every screen automatically:
+
+- **Real fonts, not a system-font stand-in.** The web app loads `Fredoka` (headlines) and `DM Sans` (body) from Google Fonts. Neither ships pre-built static weights, so the two variable fonts were downloaded from Google's own font repo and sliced into fixed-weight `.ttf`s with `fonttools varLib.instancer` (Medium/SemiBold/Bold for Fredoka, Medium/SemiBold/Bold/ExtraBold for DM Sans — the same weights the CSS `@import` requests), bundled under `Sources/Resources/Fonts/` with their OFL license text, and registered via `UIAppFonts` in `project.yml`. `Theme.Font.display`/`.body` now resolve to the real families everywhere they're already called — no per-screen changes needed for this to take effect.
+- **Avatars are a rounded square ("squircle"), not a circle.** `.avatar-photo`/`.avatar` in the web app use `border-radius: 16px` on a 46px box (ratio ≈ .348, which holds close enough across every size the web app uses — 70px→25, 86px→30 — to use as one formula instead of a lookup table). `AvatarView` was rewritten with this shape by default, with an explicit `.circle` override for the two places the web app itself switches shapes: map pins and the Highlights story ring.
+- **Map pins**: circular (not squircle), 5px white border, with the web app's pulsing green ring (`@keyframes pulse-ring`) while a friend is actually live, a static grey ring when hidden/stale, plus grayscale+opacity for away friends — `FriendPin` was rewritten to match `.person-pin`/`.person-pin.live::after` exactly.
+- **Exact shadow/color tokens.** Added the CSS custom properties that weren't ported the first time (`--fill`, `--violet-soft`, `--danger-*`, `--warn-*`, `--info-*`, the dock's own resting-icon grey `#7a7189` which the web app deliberately never routes through `--muted`), and split the one generic card shadow into the three distinct `box-shadow` recipes the web app actually uses (topbar circle buttons vs. the dock vs. sheets) rather than reusing one value everywhere.
+- **Real glass/blur chrome.** The topbar's profile pill, notification bell and Bump button, plus the dock, use `backdrop-filter: blur()` over translucent white in CSS (`--glass`/`--glass-solid`). `FloatingCard` gained a `style` (glass / glassSolid / dock / card) that renders those with an actual SwiftUI Material instead of a flat white card.
+- **Dock**: the resting tab color now matches the web app's own grey instead of reusing `--muted`, and the active tab gets the web app's violet pill background (`.dock button.active`) instead of no indication at all.
+- **Chat bubbles**: the "tail" corner (bottom-right for mine, bottom-left for theirs) is now flattened to 6px like `.chat-bubble`, instead of a uniform rounded rect, in both 1:1 and group chat.
+- **Full streak-badge system.** `PersonCard` only ever showed a static "🔥 N-day streak" pill. Ported `src/lib/streak.ts`'s tier/at-risk/repair-grace math as `StreakInfo.swift` (added `streak_grace_value`/`streak_grace_days` to the `friendships` query), so the badge now shows the same spark/flame/blaze/legend tiers, the pulsing at-risk and can-repair warnings, and the repairing state, with the same color recipes as `.streak-badge.*`.
+- **Distance card → compass card.** `PersonCard`'s plain "150 m · Live" pill was replaced with a small heading dial (bearing computed from both coordinates, same great-circle formula as the web app's `bearingDeg`) plus a compass-point label, matching `.person-compass`/`.compass-ring`.
+
+None of this has been seen rendered — see "Not yet verified" below; the fonts in particular (`Font.custom` silently falls back to the system font if a bundled name is misspelled or `UIAppFonts` is missing an entry) should be the first thing William checks after rebuilding.
+
+### Deliberately not attempted this pass (real CSS features, not yet ported)
+
+Read in full but judged too large or too separate from "shared primitive" work to fold into this pass safely without being able to see a render:
+- **Story map pins** (`.story-pin`/`.story-ring`) — Highlights with a location currently only show in the horizontal rail, not as their own animated-gradient-ring pin on the map itself, the way the web app places them.
+- **Gift-toast** (the celebratory popup for an *incoming* throw/reaction) and the **invite-welcome card** (redeeming an invite token) — both exist in CSS, neither has a native screen yet.
+- **Per-message avatar in group chat bubbles** (`.chat-bubble-row`/`.chat-bubble-avatar`) — `GroupChatView` shows the sender's name above a run of messages but not a small avatar beside each one.
+- Several rows/lists (conversation list, zone list, footprint list) render as solid floating cards in native; the web app's equivalents are flatter, transparent list rows (`.friend-row{background:transparent}`). This predates this pass and wasn't restructured — it's a legitimate style choice, just not a literal match.
+- Per-component shadow/radius values for the many smaller CSS classes not covered above (`.chip`, `.stat-card`, `.feature-grid` tiles, etc.) still use this file's original approximations rather than a line-by-line port.
+
+## What shipped in the feature-parity pass
 
 Built in three phases, each committed to the device as it finished:
 
@@ -34,7 +59,10 @@ None of these four were reported by William — they were caught by re-reading t
 
 ## Not yet verified
 
-Everything above was built by reading the real DB schema (`backend/supabase/setup.sql`) and the real, pinned Supabase Swift SDK source (cloned locally at the exact resolved revision, `2.55.1`, to confirm method signatures) rather than by guessing — but none of it has gone through an actual Xcode build, since there's no way to compile Swift from this side. **William should build in Xcode before trusting any of this compiles and runs.** If `xcodegen generate` hasn't been re-run since these files landed, run it first — several are in new folders (`Sources/Highlights/`, and new files under `Sources/Messages/`), though `project.yml`'s `sources: - path: Sources` globs recursively so no `project.yml` edit should be needed.
+Everything above was built by reading the real DB schema (`backend/supabase/setup.sql`), the real, pinned Supabase Swift SDK source (cloned locally at the exact resolved revision, `2.55.1`, to confirm method signatures), and — for the design-fidelity pass — the real `src/styles.css` values, rather than by guessing. None of it has gone through an actual Xcode build or been seen rendered, since there's no way to compile Swift or preview SwiftUI from this side. **William should build in Xcode before trusting any of this compiles and runs.** Re-run `xcodegen generate` first — this pass added a new `Sources/Resources/Fonts/` folder and changed `project.yml` itself (the new `UIAppFonts` entries), which `xcodegen generate` needs to pick up even though plain new `.swift` files elsewhere would have been auto-globbed already. Specific things worth checking first:
+- The Fredoka/DM Sans headlines actually render in the bundled font, not the system font (`Font.custom` fails silently to a system fallback if a name is misspelled or `UIAppFonts` is missing an entry — there'd be no build error, just the wrong-looking font).
+- Avatars render as rounded squares everywhere except map pins and story rings, which should stay circular.
+- `UnevenRoundedRectangle`'s `.rect(topLeadingRadius:...)` static factory (used for the chat-bubble tail corner) — iOS 17 API, matches the deployment target, but wasn't seen compile.
 
 ## Apple Developer account limits (encoded in `project.yml`, not a code bug)
 

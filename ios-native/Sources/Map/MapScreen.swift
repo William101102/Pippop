@@ -7,6 +7,11 @@ import WidgetKit
 ///
 /// MapKit rather than Leaflet-in-a-WebView is most of the "feels native" win —
 /// momentum scrolling, rotation, and the Look Around/Maps handoff all come free.
+///
+/// Layout mirrors the web app's map screen 1:1 (see `src/styles.css`): a
+/// profile chip and two circle buttons on top, the closest-friend `.map-mood`
+/// pill under them, a column of `.map-tools` down the right edge, and the
+/// `.map-peek` friend carousel sitting directly above the dock.
 struct MapScreen: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
@@ -22,16 +27,6 @@ struct MapScreen: View {
     @State private var flight: (emoji: String, power: Double, id: UUID)?
     @State private var activeDockSheet: DockSheet?
 
-    @State private var highlightsByUser: [UUID: [Highlight]] = [:]
-    @State private var showPostHighlight = false
-    @State private var viewingHighlightsFor: HighlightViewerTarget?
-
-    private struct HighlightViewerTarget: Identifiable {
-        let profile: Profile
-        let isMine: Bool
-        var id: UUID { profile.id }
-    }
-
     private enum DockSheet: String, Identifiable {
         case friends, explore, me, messages
         var id: String { rawValue }
@@ -42,10 +37,23 @@ struct MapScreen: View {
             get: { selected?.id },
             set: { id in selected = friends.first { $0.id == id } }
         )) {
-            UserAnnotation()
+            // You get a real avatar pin, not MapKit's blue dot — both Zenly
+            // and the web app draw your own face on the map the same way
+            // they draw everyone else's (`.person-pin.mine`).
+            if let profile = auth.profile, let mine = location.current {
+                // `anchor: .bottom` so the teardrop's tip is what sits on the
+                // coordinate, not the middle of the avatar.
+                Annotation("You", coordinate: mine.coordinate, anchor: .bottom) {
+                    MapAvatarPin(profile: profile, isLive: true, speed: mine.speed)
+                        .onTapGesture {
+                            Haptics.shared.play(.tap)
+                            activeDockSheet = .me
+                        }
+                }
+            }
             ForEach(friends) { friend in
                 if let coordinate = friend.location?.coordinate {
-                    Annotation(friend.displayName, coordinate: coordinate) {
+                    Annotation(friend.displayName, coordinate: coordinate, anchor: .bottom) {
                         FriendPin(friend: friend)
                             .onTapGesture {
                                 Haptics.shared.play(.tap)
@@ -57,7 +65,6 @@ struct MapScreen: View {
             }
         }
         .mapStyle(.standard(elevation: .realistic, pointsOfInterest: .excludingAll))
-        .mapControls { MapCompass(); MapUserLocationButton() }
         .overlay {
             if let flight {
                 ThrowFlightView(emoji: flight.emoji, power: flight.power)
@@ -81,39 +88,57 @@ struct MapScreen: View {
         .safeAreaInset(edge: .top) {
             VStack(spacing: 10) {
                 topBar
-                if let profile = auth.profile {
-                    HighlightsRailView(
-                        me: profile,
-                        friends: friends,
-                        highlightsByUser: highlightsByUser,
-                        onAddMine: { showPostHighlight = true },
-                        onOpen: { userId in
-                            if userId == profile.id {
-                                viewingHighlightsFor = .init(profile: profile, isMine: true)
-                            } else if let friend = friends.first(where: { $0.id == userId }) {
-                                viewingHighlightsFor = .init(profile: friend.profile, isMine: false)
-                            }
-                        }
-                    )
+                if let closest = closestFriend {
+                    MapMoodPill(friend: closest.friend, distanceText: closest.distance) {
+                        selected = closest.friend
+                    }
                 }
                 if let toast {
                     Text(toast)
                         .font(Theme.Font.body(13, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 18).padding(.vertical, 11)
-                        .background(Theme.ink.opacity(0.92), in: Capsule())
+                        .background(Theme.toastBg.opacity(0.92), in: Capsule())
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .padding(.top, 8)
         }
-        .safeAreaInset(edge: .bottom) { dock }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 10) {
+                if let profile = auth.profile {
+                    FriendRailView(
+                        me: profile,
+                        friends: friends,
+                        selectedId: selected?.id,
+                        onSelectMe: { focusOnMe() },
+                        onSelect: { friend in focus(on: friend) },
+                        onAdd: { activeDockSheet = .explore }
+                    )
+                }
+                dock
+            }
+        }
+        // `.map-tools` — the web app's own locate/explore buttons, in place of
+        // MapKit's default control cluster, so both builds put the same
+        // controls in the same corner.
+        .overlay(alignment: .bottomTrailing) {
+            VStack(spacing: 8) {
+                MapToolButton(symbol: "location.fill") { focusOnMe() }
+                MapToolButton(symbol: "mappin.and.ellipse") { activeDockSheet = .explore }
+            }
+            .padding(.trailing, 12)
+            .padding(.bottom, 168)
+        }
         .sheet(item: $selected) { friend in
             PersonCard(friend: friend) { throwable, power in
                 throwAt(friend, throwable, power)
             }
-            .presentationDetents([.medium, .large])
-            .presentationCornerRadius(32)
+            // `.person-card { max-height: 69% }` — a partial sheet that keeps
+            // the map visible behind it, not a full-screen takeover.
+            .presentationDetents([.fraction(0.69), .large])
+            .presentationCornerRadius(30)
+            .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showBump) {
             BumpView { met in show("You met \(met.name) 🎉") }
@@ -130,8 +155,13 @@ struct MapScreen: View {
                 if let friend = friends.first(where: { $0.id == friendId }) {
                     selected = friend
                 }
+            }, onCountChange: { count in
+                // The panel is the source of truth for the badge while it's
+                // open, so clearing a row updates the bell immediately.
+                notificationCount = count
             })
-            .presentationDetents([.large])
+            .presentationDetents([.fraction(0.66), .large])
+            .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $activeDockSheet) { sheet in
@@ -143,24 +173,11 @@ struct MapScreen: View {
                 case .messages: MessagesView()
                 }
             }
-            .presentationDetents([.large])
+            // `.sheet { max-height: 66% }` on the web — the map stays visible
+            // above it rather than every panel being a full-screen page.
+            .presentationDetents([.fraction(0.66), .large])
+            .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showPostHighlight) {
-            PostHighlightView(fix: location.current) { Task { await loadHighlights() } }
-        }
-        .fullScreenCover(item: $viewingHighlightsFor) { target in
-            HighlightViewerView(
-                author: target.profile,
-                isMine: target.isMine,
-                highlights: highlightsByUser[target.profile.id] ?? [],
-                onDelete: { id in
-                    Task {
-                        try? await HighlightsService.delete(id)
-                        await loadHighlights()
-                    }
-                }
-            )
         }
         // Shake anywhere on the map waves at everyone.
         .onShake { Task { await waveAll() } }
@@ -169,7 +186,6 @@ struct MapScreen: View {
                 location.start(for: id)
                 await reload(id)
                 await refreshNotificationCount(id)
-                await loadHighlights()
             }
             // Two knocks = wave, three = open bump.
             knock.start { count in
@@ -201,22 +217,25 @@ struct MapScreen: View {
         }
     }
 
+    /// `.profile-chip` — on a phone the web app hides the name/status text
+    /// (`.profile-chip > div { display: none }`), leaving just your avatar
+    /// and a chevron, so this does the same rather than carrying a name and
+    /// a "Sharing live" line the web build never shows at this width.
     private var topBar: some View {
-        HStack {
+        HStack(spacing: 8) {
             if let profile = auth.profile {
-                HStack(spacing: 9) {
-                    AvatarView(profile: profile, size: 38)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(profile.displayName)
-                            .font(Theme.Font.body(13, weight: .bold))
-                            .foregroundStyle(Theme.ink)
-                        Text(profile.statusText ?? "Sharing live")
-                            .font(Theme.Font.body(10, weight: .medium))
+                Button { activeDockSheet = .me } label: {
+                    HStack(spacing: 4) {
+                        AvatarView(profile: profile, size: 38)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Theme.muted)
+                            .padding(.trailing, 4)
                     }
+                    .padding(5)
+                    .floatingCard(radius: 22, style: .glass)
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .floatingCard(radius: 22)
+                .pressable()
             }
             Spacer()
             Button { showNotifications = true } label: {
@@ -224,14 +243,15 @@ struct MapScreen: View {
                     Image(systemName: "bell.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                        .frame(width: 44, height: 44)
-                        .floatingCard(radius: 22)
+                        .frame(width: 45, height: 45)
+                        .floatingCard(radius: 23, style: .glass)
                     if notificationCount > 0 {
                         Text(notificationCount > 9 ? "9+" : "\(notificationCount)")
                             .font(Theme.Font.body(9, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Theme.coral, in: Capsule())
+                            .background(Theme.pink, in: Capsule())
+                            .overlay(Capsule().stroke(.white, lineWidth: 2))
                             .offset(x: 4, y: -4)
                     }
                 }
@@ -241,67 +261,113 @@ struct MapScreen: View {
                 Image(systemName: "dot.radiowaves.left.and.right")
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                    .frame(width: 44, height: 44)
-                    .floatingCard(radius: 22)
+                    .frame(width: 45, height: 45)
+                    .floatingCard(radius: 23, style: .glass)
             }
             .pressable()
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
     }
 
     private var dock: some View {
         HStack(spacing: 0) {
-            dockButton("person.2.fill", "Friends") { activeDockSheet = .friends }
-            dockButton("magnifyingglass", "Explore") { activeDockSheet = .explore }
+            // Outline glyphs, matching the web app's lucide icon set — the
+            // filled SF Symbols this used before read much heavier.
+            dockButton("person.2", "Friends", isActive: activeDockSheet == .friends) { activeDockSheet = .friends }
+            dockButton("magnifyingglass", "Explore", isActive: activeDockSheet == .explore) { activeDockSheet = .explore }
             Button {
                 Task { await waveAll() }
             } label: {
                 Text("👋").font(.system(size: 26))
                     .frame(width: 52, height: 52)
                     .background(Theme.brandGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .shadow(color: Theme.pink.opacity(0.34), radius: 12, y: 6)
+                    .shadow(color: Color(hex: 0xFF4969).opacity(0.34), radius: 9, y: 8)
             }
             .pressable(scale: 0.9)
             .frame(maxWidth: .infinity)
-            dockButton("person.crop.circle", "Me") { activeDockSheet = .me }
-            dockButton("bubble.left.fill", "Messages") { activeDockSheet = .messages }
+            dockButton("person", "Me", isActive: activeDockSheet == .me) { activeDockSheet = .me }
+            dockButton("message", "Messages", isActive: activeDockSheet == .messages) { activeDockSheet = .messages }
         }
         .padding(6)
-        .floatingCard(radius: 28)
+        .floatingCard(radius: 28, style: .dock)
         .padding(.horizontal, 10)
         .padding(.bottom, 4)
     }
 
-    private func dockButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+    /// Port of `.dock button` — resting color is a dedicated grey
+    /// (`Theme.dockInactive`), never `--muted`, and the active tab gets a
+    /// soft violet pill behind it rather than just a color change.
+    private func dockButton(_ symbol: String, _ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 3) {
                 Image(systemName: symbol).font(.system(size: 19, weight: .semibold))
                 Text(label).font(Theme.Font.body(10, weight: .heavy))
             }
-            .foregroundStyle(Theme.muted)
+            .foregroundStyle(isActive ? Theme.violet : Theme.dockInactive)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(isActive ? Theme.violetSoft : .clear, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         .pressable()
     }
 
+    // MARK: - Derived state
+
+    /// The friend the `.map-mood` pill is about: the nearest one still
+    /// sharing a live position.
+    private var closestFriend: (friend: Friend, distance: String)? {
+        guard let mine = location.current else { return nil }
+        let origin = CLLocation(latitude: mine.lat, longitude: mine.lng)
+        let candidates: [(Friend, CLLocationDistance)] = friends.compactMap { friend in
+            guard friend.isLive, let theirs = friend.location else { return nil }
+            return (friend, origin.distance(from: CLLocation(latitude: theirs.lat, longitude: theirs.lng)))
+        }
+        guard let nearest = candidates.min(by: { $0.1 < $1.1 }) else { return nil }
+        return (nearest.0, Fmt.distance(nearest.1))
+    }
+
     // MARK: - Actions
+
+    private func focusOnMe() {
+        Haptics.shared.play(.tap)
+        selected = nil
+        withAnimation { camera = .userLocation(fallback: .automatic) }
+    }
+
+    private func focus(on friend: Friend) {
+        Haptics.shared.play(.tap)
+        selected = friend
+        guard let coordinate = friend.location?.coordinate else { return }
+        withAnimation {
+            camera = .region(MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008)
+            ))
+        }
+    }
 
     private func reload(_ userId: UUID) async {
         friends = (try? await FriendsService.load(for: userId)) ?? []
         publishWidgetSnapshot()
     }
 
-    private func loadHighlights() async {
-        highlightsByUser = (try? await HighlightsService.loadFriendHighlights()) ?? [:]
-    }
-
     /// Badge count: pending requests + unread messages — the two that mean
     /// "something needs your attention" rather than just "something happened".
+    ///
+    /// Only counts unread from people the notifications panel will actually
+    /// list. `loadUnreadCounts` returns rows from *anyone*, so counting it
+    /// raw left the badge stuck at a number with no row on screen able to
+    /// clear it (a message from someone who never became a friend).
     private func refreshNotificationCount(_ userId: UUID) async {
-        async let requests = (try? FriendsService.loadRequests(for: userId)) ?? []
-        async let unread = (try? MessagesService.loadUnreadCounts(for: userId)) ?? [:]
-        let (r, u) = await (requests, unread)
-        notificationCount = r.count + u.values.reduce(0, +)
+        async let requestsTask = (try? FriendsService.loadRequests(for: userId)) ?? []
+        async let unreadTask = (try? MessagesService.loadUnreadCounts(for: userId)) ?? [:]
+        let (requests, unread) = await (requestsTask, unreadTask)
+        let friendIds = Set(friends.map(\.id))
+        let unreadFromFriends = unread
+            .filter { friendIds.contains($0.key) }
+            .values
+            .reduce(0, +)
+        notificationCount = requests.count + unreadFromFriends
     }
 
     /// Hand the home-screen widget a fresh snapshot. The widget never queries
@@ -344,28 +410,51 @@ struct MapScreen: View {
     }
 }
 
-/// A friend's map pin. Green ring = live, grey = hidden or stale — the same
-/// language as the web app.
+/// A friend's map pin. All the drawing lives in `MapAvatarPin` so your own
+/// pin and a friend's are literally the same view; this just unpacks a
+/// `Friend` into it.
 struct FriendPin: View {
     let friend: Friend
 
+    private var staleLabel: String? {
+        guard !friend.isLive, let updated = friend.location?.updatedAt else { return nil }
+        return updated.relativeLabel
+    }
+
     var body: some View {
-        AvatarView(profile: friend.profile, size: 46)
-            .overlay(
-                Circle().stroke(friend.isLive ? Color(hex: 0x25CC92) : Color(hex: 0xC4BCD0), lineWidth: 3)
-                    .padding(-4)
-            )
-            .shadow(color: Theme.ink.opacity(0.22), radius: 10, y: 5)
+        MapAvatarPin(
+            profile: friend.profile,
+            isLive: friend.isLive,
+            speed: friend.isLive ? friend.location?.speed : nil,
+            staleLabel: staleLabel
+        )
     }
 }
 
+/// Port of `.avatar-photo`: a rounded square by default (a "squircle", not a
+/// circle — Zenly's own signature avatar treatment), filled with the
+/// profile's own `avatar_color`, with an explicit `.circle` escape hatch for
+/// the map pin and story rings, the two places the web app itself switches
+/// shapes.
 struct AvatarView: View {
+    enum AvatarShape { case squircle, circle }
+
     let profile: Profile
     var size: CGFloat = 44
+    var shape: AvatarShape = .squircle
+    var borderWidth: CGFloat?
+    /// `<Avatar showStatus />` — the small status-emoji disc pinned to the
+    /// bottom-right corner (`.avatar-photo i`).
+    var showStatus = false
+
+    private var stroke: CGFloat { borderWidth ?? max(2, (size * 0.065).rounded()) }
+    /// `.avatar-photo { --avatar-color: var(--coral) }` — the per-profile
+    /// colour, falling back to coral exactly like the CSS custom property.
+    private var tint: Color { Color(hexString: profile.avatarColor) ?? Theme.coral }
 
     var body: some View {
         ZStack {
-            Circle().fill(Theme.violet.opacity(0.9))
+            fillShape.fill(tint)
             if let urlString = profile.avatarUrl, let url = URL(string: urlString) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
@@ -377,13 +466,32 @@ struct AvatarView: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(.white, lineWidth: 3))
+        .clipShape(fillShape)
+        .overlay(fillShape.stroke(.white, lineWidth: stroke))
+        .shadow(color: Color(hex: 0x35255B).opacity(0.16), radius: 6, y: 5)
+        .overlay(alignment: .bottomTrailing) {
+            if showStatus, let emoji = profile.statusEmoji {
+                Text(emoji)
+                    .font(.system(size: size * 0.24))
+                    .frame(width: size * 0.5, height: size * 0.5)
+                    .background(Theme.surface, in: Circle())
+                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                    .shadow(color: Color(hex: 0x2A1C48).opacity(0.18), radius: 3, y: 2)
+                    .offset(x: size * 0.15, y: size * 0.11)
+            }
+        }
+    }
+
+    private var fillShape: AnyShape {
+        switch shape {
+        case .squircle: AnyShape(RoundedRectangle(cornerRadius: Theme.avatarRadius(for: size), style: .continuous))
+        case .circle: AnyShape(Circle())
+        }
     }
 
     private var initial: some View {
         Text(profile.displayName.prefix(1).uppercased())
-            .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+            .font(.system(size: size * 0.42, weight: .black, design: .rounded))
             .foregroundStyle(.white)
     }
 }

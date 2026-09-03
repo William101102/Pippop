@@ -146,6 +146,17 @@ private struct GroupMessageRow: View {
     let mine: Bool
     let showsSender: Bool
 
+    /// Same tailed-corner treatment as `ChatView`'s `MessageBubble` —
+    /// port of `.chat-bubble`.
+    private var shape: UnevenRoundedRectangle {
+        .rect(
+            topLeadingRadius: 18,
+            bottomLeadingRadius: mine ? 18 : 6,
+            bottomTrailingRadius: mine ? 6 : 18,
+            topTrailingRadius: 18
+        )
+    }
+
     var body: some View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             if showsSender, let sender {
@@ -162,7 +173,7 @@ private struct GroupMessageRow: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(
                         mine ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color(hex: 0xF4F0F6)),
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        in: shape
                     )
                 if !mine { Spacer(minLength: 40) }
             }

@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// The Me tab — your own profile, Ghost Mode, and account actions.
@@ -11,6 +12,10 @@ struct MeView: View {
     @State private var statusText = ""
     @State private var savingProfile = false
     @State private var saveNotice: String?
+
+    @State private var avatarItem: PhotosPickerItem?
+    @State private var uploadingAvatar = false
+    @State private var avatarError: String?
 
     @State private var changingGhostMode = false
     @State private var confirmSignOut = false
@@ -58,6 +63,10 @@ struct MeView: View {
             username = auth.profile?.username ?? ""
             statusText = auth.profile?.statusText ?? ""
         }
+        .onChange(of: avatarItem) { _, item in
+            guard let item else { return }
+            Task { await uploadAvatar(item) }
+        }
         .task { await loadWorld() }
         .alert("Sign out?", isPresented: $confirmSignOut) {
             Button("Cancel", role: .cancel) {}
@@ -84,15 +93,83 @@ struct MeView: View {
         }
     }
 
+    /// Port of `.profile-spotlight` + `.avatar-editor`: your avatar with a
+    /// violet "Change avatar" pill hanging off the bottom edge, and your
+    /// handle/name beside it on a soft gradient card.
     private func header(_ profile: Profile) -> some View {
-        VStack(spacing: 10) {
-            AvatarView(profile: profile, size: 84)
-            Text("@\(profile.username)")
-                .font(Theme.Font.body(12, weight: .medium))
-                .foregroundStyle(Theme.muted)
+        HStack(spacing: 16) {
+            ZStack(alignment: .bottom) {
+                AvatarView(profile: profile, size: 70, borderWidth: 4, showStatus: true)
+
+                PhotosPicker(selection: $avatarItem, matching: .images) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.fill").font(.system(size: 9))
+                        Text(uploadingAvatar ? "Uploading…" : "Change avatar")
+                    }
+                    .font(Theme.Font.body(8, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(Theme.violet, in: Capsule())
+                    .overlay(Capsule().stroke(.white, lineWidth: 2))
+                    .shadow(color: Color(hex: 0x472C9F).opacity(0.25), radius: 6, y: 5)
+                }
+                .disabled(uploadingAvatar)
+                .opacity(uploadingAvatar ? 0.65 : 1)
+                .offset(y: 15)
+            }
+            .padding(.bottom, 15)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("@\(profile.username)")
+                    .font(Theme.Font.body(11, weight: .heavy))
+                    .foregroundStyle(Theme.violet)
+                Text(profile.displayName)
+                    .font(Theme.Font.display(20))
+                    .foregroundStyle(Theme.ink)
+                Text(avatarError ?? "Makes you easy to spot on the map")
+                    .font(Theme.Font.body(11, weight: .medium))
+                    .foregroundStyle(avatarError == nil ? Theme.muted : Theme.dangerInk)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 8)
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: 0xFFF0E8), Color(hex: 0xF0EAFF)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 23, style: .continuous)
+        )
+    }
+
+    /// Picks the photo apart on the main actor, hands the `UIImage` to
+    /// `ProfileService`, then asks `AuthService` to re-read the row so the
+    /// new avatar appears everywhere it's shown (map pin, rails, rows).
+    private func uploadAvatar(_ item: PhotosPickerItem) async {
+        guard let userId = auth.profile?.id else { return }
+        uploadingAvatar = true
+        avatarError = nil
+        defer {
+            uploadingAvatar = false
+            avatarItem = nil
+        }
+        do {
+            guard
+                let data = try await item.loadTransferable(type: Data.self),
+                let image = UIImage(data: data)
+            else {
+                avatarError = "Couldn't read that photo — try another one"
+                return
+            }
+            try await ProfileService.uploadAvatar(userId: userId, image: image)
+            await auth.refreshProfile()
+            Haptics.shared.play(.success)
+        } catch {
+            avatarError = (error as? LocalizedError)?.errorDescription ?? "Couldn't update your photo"
+        }
     }
 
     private var editCard: some View {

@@ -73,6 +73,10 @@ struct Friend: Identifiable, Hashable, Sendable {
     var isBestFriend: Bool = false
     var streakDays: Int = 0
     var lastInteractionOn: Date?
+    /// Set together server-side once a missed-day repair window opens — see
+    /// `StreakInfo`/`bump_friend_streak` in `setup.sql`.
+    var streakGraceValue: Int?
+    var streakGraceDays: Int = 0
 
     var id: UUID { profile.id }
     var displayName: String { profile.displayName }
@@ -82,6 +86,17 @@ struct Friend: Identifiable, Hashable, Sendable {
     var isLive: Bool {
         guard ghostMode != .frozen, let updated = location?.updatedAt else { return false }
         return Date().timeIntervalSince(updated) < 30 * 60
+    }
+
+    /// Same tiered streak read the web app shows — spark/flame/blaze/legend,
+    /// at-risk, or mid-repair. See `StreakInfo`.
+    var streak: StreakInfo {
+        StreakInfo.compute(
+            streakDays: streakDays,
+            lastInteractionOn: lastInteractionOn,
+            graceValue: streakGraceValue,
+            graceDays: streakGraceDays
+        )
     }
 }
 

@@ -82,7 +82,12 @@ enum HighlightsService {
         // Reuses the `avatars` storage bucket — its policy only checks that
         // the first path segment is the uploader's own uid, so any filename
         // under that folder works; no new bucket/policy needed.
-        let path = "\(userId)/highlight-\(Int(Date.now.timeIntervalSince1970 * 1000)).jpg"
+        //
+        // The folder MUST be lowercase: that policy compares against
+        // `auth.uid()::text`, which Postgres renders lowercase, while Swift's
+        // `"\(uuid)"` is UPPERCASE. Interpolating the UUID directly made every
+        // photo upload fail RLS — see `ProfileService.storageFolder`.
+        let path = "\(ProfileService.storageFolder(for: userId))/highlight-\(Int(Date.now.timeIntervalSince1970 * 1000)).jpg"
         try await Backend.client.storage.from("avatars").upload(path, data: data, options: .init(contentType: "image/jpeg"))
         return try Backend.client.storage.from("avatars").getPublicURL(path: path).absoluteString
     }

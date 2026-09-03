@@ -79,6 +79,15 @@ final class AuthService {
         }
     }
 
+    /// Re-reads the signed-in profile row. `profile` is derived from `state`,
+    /// which is `private(set)`, so anything that writes to `profiles` from
+    /// outside this class (the avatar upload in `ProfileService`, for one)
+    /// needs this to pull the new row through to the UI.
+    func refreshProfile() async {
+        guard let userId = profile?.id else { return }
+        await loadProfile(for: userId)
+    }
+
     func signOut() async {
         try? await Backend.client.auth.signOut()
         GIDSignIn.sharedInstance.signOut()

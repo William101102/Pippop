@@ -12,6 +12,8 @@ enum FriendsService {
         let addresseeId: UUID
         let streakDays: Int?
         let lastInteractionOn: Date?
+        let streakGraceValue: Int?
+        let streakGraceDays: Int?
     }
 
     /// Loads friends plus their **masked** positions.
@@ -22,7 +24,7 @@ enum FriendsService {
     static func load(for userId: UUID) async throws -> [Friend] {
         let rows: [FriendshipRow] = try await Backend.client
             .from("friendships")
-            .select("id, requester_id, addressee_id, streak_days, last_interaction_on")
+            .select("id, requester_id, addressee_id, streak_days, last_interaction_on, streak_grace_value, streak_grace_days")
             .or("requester_id.eq.\(userId),addressee_id.eq.\(userId)")
             .eq("status", value: "accepted")
             .execute()
@@ -64,7 +66,9 @@ enum FriendsService {
                 location: locationById[profile.id],
                 isBestFriend: bestFriendIds.contains(profile.id),
                 streakDays: row?.streakDays ?? 0,
-                lastInteractionOn: row?.lastInteractionOn
+                lastInteractionOn: row?.lastInteractionOn,
+                streakGraceValue: row?.streakGraceValue,
+                streakGraceDays: row?.streakGraceDays ?? 0
             )
         }
     }

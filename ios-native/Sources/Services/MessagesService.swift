@@ -49,6 +49,24 @@ enum MessagesService {
             .execute()
     }
 
+    /// Marks every unread 1:1 message addressed to me as read, whoever sent
+    /// it.
+    ///
+    /// `loadUnreadCounts` counts rows from *anyone*, while the notifications
+    /// panel only builds a row per accepted friend — so a message from
+    /// someone who never became (or stopped being) a friend leaves the bell
+    /// badge showing a number with nothing on screen able to clear it. This
+    /// is what "Clear all" uses, so the badge can always reach zero.
+    static func markAllRead(meId: UUID) async throws {
+        struct ReadUpdate: Encodable { let readAt: Date }
+        try await Backend.client
+            .from("messages")
+            .update(ReadUpdate(readAt: .now))
+            .eq("recipient_id", value: meId)
+            .is("read_at", value: nil)
+            .execute()
+    }
+
     /// Unread 1:1 message count keyed by whoever sent them — drives both the
     /// notifications feed and the bell badge.
     static func loadUnreadCounts(for meId: UUID) async throws -> [UUID: Int] {

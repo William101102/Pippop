@@ -37,15 +37,25 @@ struct HighlightsRailView: View {
         }
     }
 
+    /// `.highlight-ring.live` — a 3-stop gradient, not the 2-stop brand
+    /// gradient used elsewhere.
+    private static let liveRingGradient = AngularGradient(
+        gradient: Gradient(colors: [Color(hex: 0xFF7B42), Color(hex: 0xFF3E86), Color(hex: 0x5B35F2)]),
+        center: .center
+    )
+
     private func item(profile: Profile, live: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
                 ZStack(alignment: .bottomTrailing) {
-                    AvatarView(profile: profile, size: 54)
+                    // `.highlight-ring .avatar-photo{border-radius:50%}` — the
+                    // one place besides map pins the web app forces a circle
+                    // instead of its usual squircle.
+                    AvatarView(profile: profile, size: 54, shape: .circle)
                         .padding(3)
                         .overlay(
                             Circle().stroke(
-                                live ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Theme.ink.opacity(0.15)),
+                                live ? AnyShapeStyle(Self.liveRingGradient) : AnyShapeStyle(Theme.ink.opacity(0.15)),
                                 lineWidth: 2.5
                             )
                         )
