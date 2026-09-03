@@ -5,6 +5,7 @@ import SwiftUI
 struct MeView: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
+    @Environment(ThemeStore.self) private var theme
     @Environment(\.dismiss) private var dismiss
 
     @State private var displayName = ""
@@ -44,6 +45,10 @@ struct MeView: View {
                             ghostModeCard
                             myWorldCard
                         }
+                        // Last of the settings cards — the account actions
+                        // below it are destructive, so they stay at the very
+                        // bottom where iOS users expect them.
+                        appearanceCard
                         accountCard
                     }
                     .padding(16)
@@ -137,7 +142,7 @@ struct MeView: View {
         .padding(14)
         .background(
             LinearGradient(
-                colors: [Color(hex: 0xFFF0E8), Color(hex: 0xF0EAFF)],
+                colors: [Theme.adaptive(light: 0xFFF0E8, dark: 0x33262C), Theme.adaptive(light: 0xF0EAFF, dark: 0x272040)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
@@ -226,7 +231,7 @@ struct MeView: View {
                             .foregroundStyle(location.ghostMode == mode ? .white : Theme.ink)
                             .frame(width: 34, height: 34)
                             .background(
-                                location.ghostMode == mode ? Theme.violet : Color(hex: 0xF4F0F6),
+                                location.ghostMode == mode ? Theme.violet : Theme.fill,
                                 in: Circle()
                             )
                         VStack(alignment: .leading, spacing: 1) {
@@ -304,7 +309,7 @@ struct MeView: View {
                                     Text(emoji).font(.system(size: 16))
                                         .frame(width: 32, height: 32)
                                         .background(
-                                            newZoneEmoji == emoji ? Theme.violet.opacity(0.15) : Color(hex: 0xF4F0F6),
+                                            newZoneEmoji == emoji ? Theme.violet.opacity(0.15) : Theme.fill,
                                             in: Circle()
                                         )
                                 }
@@ -315,7 +320,7 @@ struct MeView: View {
                             .foregroundStyle(Theme.ink)
                             .tint(Theme.violet)
                             .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(Color(hex: 0xF4F0F6), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(Theme.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         if let zoneMessage {
                             Text(zoneMessage).font(Theme.Font.body(10, weight: .medium)).foregroundStyle(Theme.coral)
                         }
@@ -381,6 +386,35 @@ struct MeView: View {
         .floatingCard(radius: 24)
     }
 
+    /// Day / Night / Auto, side by side. Each tile is a little mock-up of
+    /// the app in that mode rather than just an icon — you can see what
+    /// you're picking before you pick it.
+    private var appearanceCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("APPEARANCE")
+                .font(Theme.Font.body(10, weight: .heavy))
+                .kerning(1.3)
+                .foregroundStyle(Theme.pink)
+
+            HStack(spacing: 10) {
+                ForEach(ThemePreference.allCases, id: \.self) { option in
+                    ThemeOptionTile(option: option, isSelected: theme.preference == option) {
+                        Haptics.shared.play(.tap)
+                        withAnimation(.easeOut(duration: 0.2)) { theme.preference = option }
+                    }
+                }
+            }
+
+            Text(theme.preference == .auto
+                 ? "Follows your phone's Light/Dark setting."
+                 : "Always \(theme.preference.label.lowercased()) mode, whatever your phone is set to.")
+                .font(Theme.Font.body(11, weight: .medium))
+                .foregroundStyle(Theme.muted)
+        }
+        .padding(16)
+        .floatingCard(radius: 24)
+    }
+
     private var accountCard: some View {
         VStack(spacing: 10) {
             Button { confirmSignOut = true } label: {
@@ -424,7 +458,7 @@ struct MeView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
-        .background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func field(_ placeholder: String, text: Binding<String>) -> some View {
@@ -434,7 +468,7 @@ struct MeView: View {
             .tint(Theme.violet)
             .padding(.horizontal, 14)
             .frame(height: 46)
-            .background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .autocorrectionDisabled()
     }
 
@@ -495,5 +529,109 @@ struct MeView: View {
         defer { zoneBusy = false }
         try? await ZonesService.delete(zone.id)
         zones.removeAll { $0.id == zone.id }
+    }
+}
+
+/// One of the three appearance choices. Selected state uses the same
+/// violet-on-violet-soft language as the dock's active tab and Ghost Mode's
+/// chosen row, so it reads as "picked" without needing a checkmark.
+private struct ThemeOptionTile: View {
+    let option: ThemePreference
+    let isSelected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 9) {
+                swatch
+                HStack(spacing: 4) {
+                    Image(systemName: option.symbol)
+                        .font(.system(size: 10, weight: .bold))
+                    Text(option.label)
+                        .font(Theme.Font.body(11, weight: .heavy))
+                }
+                .foregroundStyle(isSelected ? Theme.violet : Theme.muted)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .padding(.horizontal, 8)
+            .background(
+                isSelected ? Theme.violetSoft : Theme.fill2,
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isSelected ? Theme.violet : .clear, lineWidth: 2)
+            )
+        }
+        .pressable(scale: 0.95)
+    }
+
+    /// A miniature of the map screen in the chosen palette. These are fixed
+    /// literals, not `Theme` tokens — the point is to show what the *other*
+    /// mode looks like while you're still in this one, so they must not
+    /// adapt with the current theme.
+    @ViewBuilder
+    private var swatch: some View {
+        switch option {
+        case .light:
+            ThemeSwatch(ground: 0xFFF8EF, surface: 0xFFFFFF, ink: 0x281F42)
+        case .dark:
+            ThemeSwatch(ground: 0x14111C, surface: 0x1E1A29, ink: 0xF5F1FA)
+        case .auto:
+            ZStack {
+                ThemeSwatch(ground: 0xFFF8EF, surface: 0xFFFFFF, ink: 0x281F42)
+                ThemeSwatch(ground: 0x14111C, surface: 0x1E1A29, ink: 0xF5F1FA)
+                    .clipShape(DiagonalHalf())
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+    }
+}
+
+/// A tiny fake app screen: a ground, a floating card on it, and a friend row.
+private struct ThemeSwatch: View {
+    let ground: UInt32
+    let surface: UInt32
+    let ink: UInt32
+
+    var body: some View {
+        ZStack {
+            Color(hex: ground)
+            VStack(spacing: 5) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color(hex: surface))
+                    .frame(height: 11)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Theme.coral)
+                        .frame(width: 9, height: 9)
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color(hex: ink).opacity(0.5))
+                        .frame(height: 5)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(7)
+        }
+        .frame(height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(.black.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+/// Lower-right triangle, so "Auto" reads as the two palettes split across
+/// one preview — the same affordance macOS uses for its Auto appearance.
+private struct DiagonalHalf: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }

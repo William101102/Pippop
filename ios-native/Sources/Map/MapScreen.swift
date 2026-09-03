@@ -126,6 +126,10 @@ struct MapScreen: View {
             VStack(spacing: 8) {
                 MapToolButton(symbol: "location.fill") { focusOnMe() }
                 MapToolButton(symbol: "mappin.and.ellipse") { activeDockSheet = .explore }
+                // The web app puts a theme toggle here as a third tool; on
+                // native it lives in Me → Appearance as a proper three-up
+                // picker instead, which shows what each mode looks like
+                // rather than making you cycle blind through them.
             }
             .padding(.trailing, 12)
             .padding(.bottom, 168)

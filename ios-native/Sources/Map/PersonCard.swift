@@ -147,7 +147,7 @@ private struct PersonCompassCard: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .stroke(Color(hex: 0xD9D0EA), lineWidth: 2)
+                    .stroke(Theme.adaptive(light: 0xD9D0EA, dark: 0x453B5C), lineWidth: 2)
                     .background(Circle().fill(Theme.surface))
                 Image(systemName: "arrowtriangle.up.fill")
                     .font(.system(size: 13))
@@ -170,7 +170,7 @@ private struct PersonCompassCard: View {
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity)
         .background(
-            LinearGradient(colors: [Color(hex: 0xF4F0FF), Theme.warnSoft], startPoint: .topLeading, endPoint: .bottomTrailing),
+            LinearGradient(colors: [Theme.adaptive(light: 0xF4F0FF, dark: 0x272040), Theme.warnSoft], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
     }
@@ -188,7 +188,7 @@ struct StreakBadge: View {
                 text("Repairing streak — \(info.repairDaysLeft) more day\(info.repairDaysLeft == 1 ? "" : "s") in a row restores it to \(info.repairTarget)", icon: "🩹")
                     .foregroundStyle(Theme.infoInk)
                     .background(
-                        LinearGradient(colors: [Color(hex: 0xEAF6FF), Color(hex: 0xDFF0FF)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        LinearGradient(colors: [Theme.adaptive(light: 0xEAF6FF, dark: 0x1B3448), Theme.adaptive(light: 0xDFF0FF, dark: 0x16293A)], startPoint: .topLeading, endPoint: .bottomTrailing),
                         in: Capsule()
                     )
             } else if info.canRepair {

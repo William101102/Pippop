@@ -46,7 +46,7 @@ struct CheckInView: View {
                                     .foregroundStyle(category == item ? .white : Theme.ink)
                                     .frame(maxWidth: .infinity, minHeight: 58)
                                     .background(
-                                        category == item ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color(hex: 0xF4F0F6)),
+                                        category == item ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Theme.fill),
                                         in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     )
                                 }

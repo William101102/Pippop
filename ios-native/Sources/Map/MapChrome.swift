@@ -274,7 +274,7 @@ struct FriendRailView: View {
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(Color(hex: 0xD8D0E0), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                            .strokeBorder(Theme.adaptive(light: 0xD8D0E0, dark: 0x4A4260), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
                     )
                 Text("Add")
                     .font(Theme.Font.body(10, weight: .heavy))

@@ -5,21 +5,24 @@ import SwiftUI
 struct PinpopApp: App {
     @State private var auth = AuthService()
     @State private var location = LocationService()
+    @State private var theme = ThemeStore()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(auth)
                 .environment(location)
+                .environment(theme)
                 .tint(Theme.violet)
-                // Every surface in this app (Theme.ground, Theme.surface,
-                // Theme.ink) is a hardcoded light palette with no dark-mode
-                // counterpart — it was never meant to adapt. Without this,
-                // a device in Dark Mode still gets system-drawn text
-                // (TextField input, in particular) in white, which lands on
-                // top of our own hardcoded-white card backgrounds and
-                // disappears entirely.
-                .preferredColorScheme(.light)
+                // This used to be pinned to `.light`, because every surface
+                // was a hardcoded light value with no dark counterpart — so
+                // a device in Dark Mode got system-drawn text (TextField
+                // input especially) in white on our hardcoded-white cards.
+                // Every token in `Theme` is now a dynamic colour with both
+                // palettes from `styles.css`, so the app can follow the
+                // system again — or be pinned to Day/Night from the map's
+                // theme button, exactly like the web app's toggle.
+                .preferredColorScheme(theme.preference.colorScheme)
                 .task { await auth.start() }
                 .onOpenURL { url in
                     // Google's OAuth callback, plus pinpop:// invite links.
@@ -116,7 +119,7 @@ struct CompleteProfileView: View {
             .tint(Theme.violet)
             .padding(.horizontal, 16)
             .frame(height: 52)
-            .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .autocorrectionDisabled()
     }
 }

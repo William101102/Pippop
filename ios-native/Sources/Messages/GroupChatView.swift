@@ -64,7 +64,7 @@ struct GroupChatView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Theme.ink)
                     .frame(width: 34, height: 34)
-                    .background(Color(hex: 0xF4F0F6), in: Circle())
+                    .background(Theme.fill, in: Circle())
             }
             .pressable()
 
@@ -93,7 +93,7 @@ struct GroupChatView: View {
                 .tint(Theme.violet)
                 .lineLimit(1...4)
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(Color(hex: 0xF4F0F6), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(Theme.fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             Button { Task { await send() } } label: {
                 Image(systemName: "arrow.up")
@@ -172,7 +172,7 @@ private struct GroupMessageRow: View {
                     .foregroundStyle(mine ? .white : Theme.ink)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(
-                        mine ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Color(hex: 0xF4F0F6)),
+                        mine ? AnyShapeStyle(Theme.brandGradient) : AnyShapeStyle(Theme.fill),
                         in: shape
                     )
                 if !mine { Spacer(minLength: 40) }
@@ -201,7 +201,7 @@ private struct GroupAvatarStack: View {
                     .font(Theme.Font.body(10, weight: .heavy))
                     .foregroundStyle(Theme.ink)
                     .frame(width: 32, height: 32)
-                    .background(Color(hex: 0xF4F0F6))
+                    .background(Theme.fill)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(Theme.surface, lineWidth: 2))
             }

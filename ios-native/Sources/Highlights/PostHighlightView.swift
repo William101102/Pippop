@@ -38,7 +38,7 @@ struct PostHighlightView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, minHeight: 220)
-                        .background(Color(hex: 0xF4F0F6), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .background(Theme.fill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
                     .onChange(of: pickerItem) { _, item in

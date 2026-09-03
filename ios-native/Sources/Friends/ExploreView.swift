@@ -243,7 +243,7 @@ struct ExploreView: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 48)
-            .background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             Button {
                 Task { await sendRequest(username: usernameToAdd) }

@@ -242,7 +242,7 @@ struct FriendsView: View {
         }
         .padding(.horizontal, 11).padding(.vertical, 10)
         .background(
-            LinearGradient(colors: [Color(hex: 0xFFF2EC), Color(hex: 0xF1ECFF)], startPoint: .topLeading, endPoint: .bottomTrailing),
+            LinearGradient(colors: [Theme.adaptive(light: 0xFFF2EC, dark: 0x33262C), Theme.adaptive(light: 0xF1ECFF, dark: 0x272040)], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 20, style: .continuous)
         )
     }
