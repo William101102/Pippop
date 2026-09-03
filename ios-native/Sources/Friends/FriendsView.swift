@@ -131,11 +131,13 @@ struct FriendsView: View {
                 PersonCard(friend: friend) { throwable, _ in
                     Task { try? await SocialService.throwEmoji(throwable.emoji, to: friend.id) }
                 }
+                .themedPresentation()
                 .presentationDetents([.fraction(0.69), .large])
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
             case .postHighlight:
                 PostHighlightView(fix: location.current) { Task { await loadHighlights() } }
+                    .themedPresentation()
             }
         }
         .fullScreenCover(item: $viewingHighlightsFor) { target in
@@ -150,6 +152,7 @@ struct FriendsView: View {
                     }
                 }
             )
+            .themedPresentation()
         }
     }
 

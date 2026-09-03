@@ -66,10 +66,17 @@ enum PlacesService {
     /// it does to the person holding the phone.
     private static let nightHours = 1..<5
 
-    private static let lastRecordedKey = "pinpop-last-night-sample"
+    private static let recordedNightsKey = "pinpop-recorded-nights"
+    /// How much of the night window has to be spent at a place before it
+    /// counts as having slept there — 2 of the 4 hours.
+    private static let minNightOverlap: TimeInterval = 2 * 3600
 
     /// Call on every fix. Cheap no-op outside the night window or once
     /// tonight's sample is already recorded.
+    ///
+    /// This is the weaker of the two paths: it only fires if the app happens
+    /// to be receiving fixes during the small hours. `recordNights(from:)`
+    /// below is the one that works while the app is closed.
     static func maybeRecordNightSample(_ fix: Fix, userId: UUID) {
         let now = Date()
         let calendar = Calendar.current
@@ -77,19 +84,112 @@ enum PlacesService {
         // "Last night" reads as the evening's date, not the morning's — a
         // 2 AM fix on the 4th is a sample of the night of the 3rd.
         guard let nightOf = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now)) else { return }
-
-        let key = nightKey(for: nightOf, calendar: calendar)
-        let defaults = UserDefaults.standard
-        guard defaults.string(forKey: lastRecordedKey) != key else { return }
-        defaults.set(key, forKey: lastRecordedKey)
+        guard claimNight(nightOf, calendar: calendar) else { return }
 
         Task { await recordNight(fix: fix, userId: userId, nightOf: nightOf) }
+    }
+
+    /// The path that makes overnight places work **without the app running**.
+    ///
+    /// iOS delivers a `CLVisit` — arrival and departure at a place the user
+    /// actually stopped at — by relaunching a terminated app, so a night at
+    /// home is recorded even though nobody opened Pinpop at 3 AM. A visit can
+    /// also span several days, in which case every night inside it counts and
+    /// the streak advances properly.
+    ///
+    /// Requires Always authorisation; without it iOS never sends visits and
+    /// only the sampling path above is left.
+    static func recordNights(from visit: CLVisit, userId: UUID) {
+        let now = Date()
+        let calendar = Calendar.current
+        // A visit still in progress reports `distantFuture` as its departure.
+        let arrival = max(visit.arrivalDate, now.addingTimeInterval(-30 * 86_400))
+        let departure = min(visit.departureDate, now)
+        guard departure > arrival else { return }
+
+        let fix = Fix(
+            lat: visit.coordinate.latitude,
+            lng: visit.coordinate.longitude,
+            accuracy: visit.horizontalAccuracy,
+            speed: nil
+        )
+
+        let pending = nights(between: arrival, and: departure, calendar: calendar)
+        guard !pending.isEmpty else { return }
+
+        // One task walking the nights oldest-first, not a task per night:
+        // `recordNight` reads the current streak before writing the new one,
+        // so three nights running in parallel would all read the same old
+        // score and each write "old + 1" instead of building to "old + 3".
+        Task {
+            for nightOf in pending {
+                guard claimNight(nightOf, calendar: calendar) else { continue }
+                await recordNight(fix: fix, userId: userId, nightOf: nightOf)
+            }
+        }
+    }
+
+    /// Every night whose 1–5 AM window this stay covered for at least
+    /// `minNightOverlap`. Walks local calendar days, so a stay that crosses a
+    /// DST change or a time-zone move still lines up with the nights the
+    /// person actually experienced.
+    private static func nights(between arrival: Date, and departure: Date, calendar: Calendar) -> [Date] {
+        var result: [Date] = []
+        var day = calendar.startOfDay(for: arrival)
+        let lastDay = calendar.startOfDay(for: departure)
+
+        while day <= lastDay {
+            // The night *of* `day` is the window in the small hours of the
+            // following morning.
+            guard
+                let morning = calendar.date(byAdding: .day, value: 1, to: day),
+                let windowStart = calendar.date(bySettingHour: nightHours.lowerBound, minute: 0, second: 0, of: morning),
+                let windowEnd = calendar.date(bySettingHour: nightHours.upperBound, minute: 0, second: 0, of: morning)
+            else { break }
+
+            let overlap = min(departure, windowEnd).timeIntervalSince(max(arrival, windowStart))
+            if overlap >= minNightOverlap { result.append(day) }
+
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return result
+    }
+
+    /// Claims a night so it's only ever written once, returning false if it
+    /// was already recorded. Both entry points funnel through this — the
+    /// streak maths in `recordNight` assumes one write per night, and a visit
+    /// callback can easily arrive twice for the same stay.
+    private static func claimNight(_ nightOf: Date, calendar: Calendar) -> Bool {
+        let key = nightKey(for: nightOf, calendar: calendar)
+        let defaults = UserDefaults.standard
+        var recorded = defaults.stringArray(forKey: recordedNightsKey) ?? []
+        guard !recorded.contains(key) else { return false }
+        recorded.append(key)
+        defaults.set(recorded.suffix(60).map { $0 }, forKey: recordedNightsKey)
+        return true
+    }
+
+    /// `last_seen_at` is stamped with **the night**, not with the moment the
+    /// row is written. A visit callback can backfill three nights at once on
+    /// the morning it fires; stamping all three "now" would make each one
+    /// look like the same night to the streak check below, and the count
+    /// would reset to 1 instead of building to 3. It also makes the 15-day
+    /// staleness rule mean what it says — days since you last slept there,
+    /// not days since the row was touched.
+    private static func nightTimestamp(_ nightOf: Date, calendar: Calendar) -> Date {
+        guard
+            let morning = calendar.date(byAdding: .day, value: 1, to: nightOf),
+            let start = calendar.date(bySettingHour: nightHours.lowerBound, minute: 0, second: 0, of: morning)
+        else { return nightOf }
+        return start
     }
 
     private static func recordNight(fix: Fix, userId: UUID, nightOf: Date) async {
         let calendar = Calendar.current
         let cellLat = cell(fix.lat)
         let cellLng = cell(fix.lng)
+        let seenAt = nightTimestamp(nightOf, calendar: calendar)
 
         let existing: [SignificantPlace] = (try? await Backend.client
             .from("significant_places")
@@ -125,7 +225,7 @@ enum PlacesService {
         try? await Backend.client
             .from("significant_places")
             .upsert(
-                Upsert(userId: userId, kind: "overnight", lat: fix.lat, lng: fix.lng, cellLat: cellLat, cellLng: cellLng, score: newScore, lastSeenAt: .now),
+                Upsert(userId: userId, kind: "overnight", lat: fix.lat, lng: fix.lng, cellLat: cellLat, cellLng: cellLng, score: newScore, lastSeenAt: seenAt),
                 onConflict: "user_id,kind,cell_lat,cell_lng"
             )
             .execute()

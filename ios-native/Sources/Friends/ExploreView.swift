@@ -77,9 +77,12 @@ struct ExploreView: View {
         }
         .task { await loadNearby() }
         .sheet(isPresented: $showCheckIn) {
-            if let fix = location.current {
-                CheckInView(fix: fix) { Task { await loadNearby() } }
+            Group {
+                if let fix = location.current {
+                    CheckInView(fix: fix) { Task { await loadNearby() } }
+                }
             }
+            .themedPresentation()
         }
     }
 

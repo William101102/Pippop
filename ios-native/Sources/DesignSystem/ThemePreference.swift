@@ -67,3 +67,28 @@ final class ThemeStore {
         preference = preference.next
     }
 }
+
+extension View {
+    /// Apply to the root of **every** sheet and full-screen cover.
+    ///
+    /// `preferredColorScheme` sets the scheme for "this presentation" — and a
+    /// sheet is its own presentation, not part of the one it was presented
+    /// from. So the single call on the app's root view in `PinpopApp` covers
+    /// the map and nothing else: every sheet was quietly falling back to
+    /// whatever the *system* appearance was. With the phone in dark mode and
+    /// the app set to Day that showed up as a dark Me sheet over a light map;
+    /// with the phone in light mode and the app set to Night, the reverse.
+    /// Neither had anything to do with the toggle "not taking effect" — the
+    /// setting simply never reached those views.
+    func themedPresentation() -> some View {
+        modifier(ThemedPresentation())
+    }
+}
+
+private struct ThemedPresentation: ViewModifier {
+    @Environment(ThemeStore.self) private var theme
+
+    func body(content: Content) -> some View {
+        content.preferredColorScheme(theme.preference.colorScheme)
+    }
+}

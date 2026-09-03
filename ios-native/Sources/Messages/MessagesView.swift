@@ -98,6 +98,7 @@ struct MessagesView: View {
                 NewGroupView(friends: friends) { group in
                     groups.insert(group, at: 0)
                 }
+                .themedPresentation()
             }
         }
         .task { await reload() }

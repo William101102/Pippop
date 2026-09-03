@@ -5,6 +5,7 @@ import SwiftUI
 struct PinpopApp: App {
     @State private var auth = AuthService()
     @State private var location = LocationService()
+    @State private var motion = MotionActivityService()
     @State private var theme = ThemeStore()
 
     var body: some Scene {
@@ -12,6 +13,7 @@ struct PinpopApp: App {
             RootView()
                 .environment(auth)
                 .environment(location)
+                .environment(motion)
                 .environment(theme)
                 .tint(Theme.violet)
                 // This used to be pinned to `.light`, because every surface
@@ -23,7 +25,15 @@ struct PinpopApp: App {
                 // system again — or be pinned to Day/Night from the map's
                 // theme button, exactly like the web app's toggle.
                 .preferredColorScheme(theme.preference.colorScheme)
-                .task { await auth.start() }
+                .task {
+                    // Both of these have to happen at *app* level, not on the
+                    // map screen: iOS relaunches this app in the background
+                    // for a significant location change or a visit, and on
+                    // that launch no view ever appears to kick things off.
+                    location.resume()
+                    motion.start()
+                    await auth.start()
+                }
                 .onOpenURL { url in
                     // Google's OAuth callback, plus pinpop:// invite links.
                     if GIDSignIn.sharedInstance.handle(url) { return }

@@ -15,7 +15,7 @@ import WidgetKit
 struct MapScreen: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
-    @Environment(ThemeStore.self) private var theme
+    @Environment(MotionActivityService.self) private var motion
 
     @State private var friends: [Friend] = []
     @State private var nightPlaces: [SignificantPlace] = []
@@ -59,7 +59,11 @@ struct MapScreen: View {
                 // `anchor: .bottom` so the teardrop's tip is what sits on the
                 // coordinate, not the middle of the avatar.
                 Annotation("You", coordinate: mine.coordinate, anchor: .bottom) {
-                    MapAvatarPin(profile: profile, isLive: true, speed: mine.speed)
+                    // Motion has the last word on whether a speed shows at
+                    // all: the coprocessor knows a phone on a desk is
+                    // stationary no matter what the GPS is claiming, which no
+                    // amount of filtering the speed value can tell you.
+                    MapAvatarPin(profile: profile, isLive: true, speed: motion.isMoving ? mine.speed : nil)
                         .onTapGesture {
                             Haptics.shared.play(.tap)
                             activeDockSheet = .me
@@ -165,7 +169,7 @@ struct MapScreen: View {
             PersonCard(friend: friend) { throwable, power in
                 throwAt(friend, throwable, power)
             }
-            .id(theme.preference)
+            .themedPresentation()
             // `.person-card { max-height: 69% }` — a partial sheet that keeps
             // the map visible behind it, not a full-screen takeover.
             .presentationDetents([.fraction(0.69), .large])
@@ -174,6 +178,7 @@ struct MapScreen: View {
         }
         .fullScreenCover(isPresented: $showBump) {
             BumpView { met in show("You met \(met.name) 🎉") }
+                .themedPresentation()
         }
         .sheet(isPresented: $showNotifications) {
             NotificationsView(onFocusEvent: { lat, lng in
@@ -192,32 +197,24 @@ struct MapScreen: View {
                 // open, so clearing a row updates the bell immediately.
                 notificationCount = count
             })
-            .id(theme.preference)
+            .themedPresentation()
             .presentationDetents([.fraction(0.66), .large])
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $activeDockSheet) { sheet in
             Group {
-                // Day/Night/Auto lives in Me, and Me updates live while it's
-                // open — the map behind it proves that. These other three
-                // don't: a `.sheet(item:)` swapping *which* case is shown
-                // without the modifier's own presentation ever fully
-                // tearing down can leave a freshly-opened Friends/Explore/
-                // Messages sheet drawn against the trait collection that was
-                // current when it was last built, not the one just picked —
-                // hence "only changes if you swipe away and come back".
-                // `.id(theme.preference)` forces a clean rebuild against
-                // whatever the current preference actually is. Left off
-                // `.me` itself so toggling a tile there doesn't reset its
-                // own in-progress edits.
                 switch sheet {
-                case .friends: FriendsView().id(theme.preference)
-                case .explore: ExploreView().id(theme.preference)
+                case .friends: FriendsView()
+                case .explore: ExploreView()
                 case .me: MeView()
-                case .messages: MessagesView().id(theme.preference)
+                case .messages: MessagesView()
                 }
             }
+            // Every sheet is its own presentation and needs the app's
+            // day/night preference applied to it directly — see
+            // `themedPresentation()`.
+            .themedPresentation()
             // `.sheet { max-height: 66% }` on the web — the map stays visible
             // above it rather than every panel being a full-screen page.
             .presentationDetents([.fraction(0.66), .large])
@@ -300,15 +297,20 @@ struct MapScreen: View {
                 }
                 .pressable()
             }
-            Spacer()
+            Spacer(minLength: 4)
             if let cityName {
+                // Zenly sets the place name straight onto the map — big
+                // Fredoka caps, no card behind it, just a soft halo of the
+                // page colour so it stays readable over streets and parks.
                 Text(cityName.uppercased())
-                    .font(Theme.Font.display(13))
+                    .font(Theme.Font.display(21))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
-                    .padding(.horizontal, 13).padding(.vertical, 9)
-                    .floatingCard(radius: 16, style: .glass)
-                Spacer()
+                    .minimumScaleFactor(0.7)
+                    .shadow(color: Theme.ground, radius: 3)
+                    .shadow(color: Theme.ground.opacity(0.9), radius: 7)
+                    .shadow(color: Theme.ground.opacity(0.8), radius: 12)
+                Spacer(minLength: 4)
             }
             Button { showNotifications = true } label: {
                 ZStack(alignment: .topTrailing) {
@@ -456,8 +458,13 @@ struct MapScreen: View {
             // suspends, which cancels the request), and the result has to be
             // written back on the main actor — a bare `Task {}` in a
             // non-isolated method hops off it.
+            // `preferredLocale` pinned to English on purpose: the rest of the
+            // app's chrome is English, and without it CoreLocation localises
+            // the place name to the phone's language — a Chinese phone in
+            // Santa Clara reads "圣克拉拉" next to an English dock.
             let placemarks = try? await geocoder.reverseGeocodeLocation(
-                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                preferredLocale: Locale(identifier: "en_US")
             )
             guard let place = placemarks?.first else { return }
             cityName = place.locality

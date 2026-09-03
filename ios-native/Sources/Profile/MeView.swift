@@ -1,10 +1,12 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 /// The Me tab — your own profile, Ghost Mode, and account actions.
 struct MeView: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
+    @Environment(MotionActivityService.self) private var motion
     @Environment(ThemeStore.self) private var theme
     @Environment(\.dismiss) private var dismiss
 
@@ -48,6 +50,7 @@ struct MeView: View {
                             editCard
                             statusCard
                             ghostModeCard
+                            backgroundLocationCard
                             myWorldCard
                         }
                         // Last of the settings cards — the account actions
@@ -502,6 +505,81 @@ struct MeView: View {
             statusNotice = "Saved — friends see this on your pin."
             Haptics.shared.play(.success)
         }
+    }
+
+    /// Background location — the difference between "friends see you while
+    /// Pinpop is open" and "friends see you".
+    ///
+    /// iOS will not hand out Always from a cold prompt, and it shows the
+    /// upgrade prompt exactly **once** per install, so this card exists to ask
+    /// at a moment the person is actually thinking about sharing, and to fall
+    /// back to Settings once that single chance is spent
+    /// (`LocationService.canAskForAlways`).
+    private var backgroundLocationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("BACKGROUND LOCATION")
+                .font(Theme.Font.body(10, weight: .heavy))
+                .kerning(1.3)
+                .foregroundStyle(Theme.pink)
+
+            HStack(spacing: 12) {
+                Image(systemName: location.runsInBackground ? "location.fill.viewfinder" : "location.slash")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(location.runsInBackground ? .white : Theme.ink)
+                    .frame(width: 34, height: 34)
+                    .background(location.runsInBackground ? Theme.violet : Theme.fill, in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(location.runsInBackground ? "Always on" : "Only while Pinpop is open")
+                        .font(Theme.Font.body(13, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                    Text(backgroundLocationDetail)
+                        .font(Theme.Font.body(10, weight: .medium))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if !location.runsInBackground {
+                Button {
+                    Haptics.shared.play(.tap)
+                    if location.canAskForAlways {
+                        location.requestAlways()
+                    } else if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text(location.canAskForAlways ? "Allow Always" : "Open Settings")
+                        .font(Theme.Font.body(14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(Theme.brandGradient, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .pressable()
+            }
+
+            if motion.isAvailable {
+                HStack(spacing: 8) {
+                    Image(systemName: motion.mode.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Right now: \(motion.mode.label.lowercased())")
+                        .font(Theme.Font.body(11, weight: .semibold))
+                }
+                .foregroundStyle(Theme.muted)
+            }
+        }
+        .padding(16)
+        .floatingCard(radius: 24)
+    }
+
+    private var backgroundLocationDetail: String {
+        if location.runsInBackground {
+            return "Friends keep seeing you, and your overnight places keep updating, even when Pinpop is closed."
+        }
+        if location.canAskForAlways {
+            return "Your pin freezes the moment you close Pinpop. Always keeps it live and is what overnight places need."
+        }
+        return "iOS only offers the Always prompt once. Change it under Location → Always in Settings."
     }
 
     /// Day / Night / Auto, side by side. Each tile is a little mock-up of
