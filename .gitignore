@@ -11,3 +11,4 @@ supabase/.temp
 # permission strings are reapplied by ios-setup/apply-info-plist.mjs.
 ios/
 android/
+ios-native/Secrets.xcconfig
