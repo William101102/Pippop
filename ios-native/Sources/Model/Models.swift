@@ -173,11 +173,33 @@ struct Fix: Sendable, Equatable {
         CLLocationCoordinate2D(latitude: lat, longitude: lng)
     }
 
+    /// Used by `LocationService` once it has decided a speed is actually
+    /// trustworthy enough to show — see `confirmSpeed(_:now:)`.
+    init(lat: Double, lng: Double, accuracy: Double?, speed: Double?) {
+        self.lat = lat
+        self.lng = lng
+        self.accuracy = accuracy
+        self.speed = speed
+    }
+
     init(_ location: CLLocation) {
         lat = location.coordinate.latitude
         lng = location.coordinate.longitude
         accuracy = location.horizontalAccuracy >= 0 ? location.horizontalAccuracy : nil
-        speed = location.speed >= 0 ? location.speed : nil
+        // CLLocation.speed is Doppler-derived, not read off the accelerometer —
+        // but a poor or ambiguous fix (indoors, multipath, the phone getting
+        // reoriented while sitting still) can still report a "valid" (>=0)
+        // speed that's really just noise. That's what was showing 7 MPH from
+        // a shake. `speedAccuracy` is CoreLocation's own confidence figure
+        // for that number; a fix that doesn't clear it doesn't get to claim
+        // a speed at all. (This is only the first filter — LocationService
+        // additionally requires two such readings in a row before anything
+        // reaches the map or a friend.)
+        if location.speed >= 0, location.speedAccuracy >= 0, location.speedAccuracy <= 3 {
+            speed = location.speed
+        } else {
+            speed = nil
+        }
     }
 }
 

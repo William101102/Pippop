@@ -40,6 +40,14 @@ final class LocationService: NSObject {
     private var gate = FixGate()
     private var userId: UUID?
 
+    /// Valid-looking speed readings from the last `confirmWindow` seconds —
+    /// see `confirmSpeed(_:now:)`.
+    private var recentMovingSpeeds: [(at: Date, speed: Double)] = []
+    /// Walking pace, roughly — below this a reading is "standing still",
+    /// whatever CoreLocation's confidence figure says about it.
+    private static let minMovingSpeedMps: Double = 1.2
+    private static let confirmWindow: TimeInterval = 90
+
     override init() {
         super.init()
         manager.delegate = self
@@ -75,6 +83,23 @@ final class LocationService: NSObject {
     func stop() {
         manager.stopUpdatingLocation()
         userId = nil
+    }
+
+    /// Requires two walking-pace-or-faster readings inside the last 90
+    /// seconds before a speed is trusted enough to show — on the map, on a
+    /// friend's pin, anywhere. `Fix.init` already drops speeds CoreLocation
+    /// itself isn't confident about; this is the second line of defense,
+    /// for the case that *does* come back looking confident but is really a
+    /// one-off (a shake, a reflection off a building). Two bad readings in a
+    /// row inside 90 seconds essentially never happens; genuinely starting
+    /// to walk, drive, or ride does.
+    private func confirmSpeed(_ fix: Fix, now: Date) -> Double? {
+        if let speed = fix.speed, speed >= Self.minMovingSpeedMps {
+            recentMovingSpeeds.append((now, speed))
+        }
+        recentMovingSpeeds.removeAll { now.timeIntervalSince($0.at) > Self.confirmWindow }
+        guard recentMovingSpeeds.count >= 2, let latest = recentMovingSpeeds.last else { return nil }
+        return latest.speed
     }
 
     private func persist(_ fix: Fix) async {
@@ -113,11 +138,20 @@ extension LocationService: CLLocationManagerDelegate {
         guard let newest = locations.last else { return }
         let fix = Fix(newest)
         Task { @MainActor in
-            self.current = fix
+            let now = Date()
+            // The gate (movement/interval) always runs against the raw fix —
+            // speed confidence has nothing to do with whether this position
+            // update is worth persisting.
+            let confirmed = self.confirmSpeed(fix, now: now)
+            let displayFix = Fix(lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, speed: confirmed)
+            self.current = displayFix
             self.isDenied = false
+            if let userId = self.userId {
+                PlacesService.maybeRecordNightSample(fix, userId: userId)
+            }
             guard self.gate.shouldPersist(fix) else { return }
             self.gate.commit(fix)
-            await self.persist(fix)
+            await self.persist(displayFix)
         }
     }
 

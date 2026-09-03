@@ -15,8 +15,14 @@ import WidgetKit
 struct MapScreen: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
+    @Environment(ThemeStore.self) private var theme
 
     @State private var friends: [Friend] = []
+    @State private var nightPlaces: [SignificantPlace] = []
+    /// "SANTA MONICA" in the top bar — reverse-geocoded from your own fix and
+    /// only refreshed once you've actually moved, not on every ping.
+    @State private var cityName: String?
+    @State private var lastGeocodedCoordinate: CLLocationCoordinate2D?
     /// Deliberately **not** `.userLocation`. Pinning the camera to the user's
     /// location puts MapKit into follow mode, which draws its own system
     /// location puck — a second marker sitting under our avatar pin (tinted
@@ -67,6 +73,14 @@ struct MapScreen: View {
                             }
                     }
                     .tag(friend.id)
+                }
+            }
+            // Where you (or a friend) sleep — a standing pin, not tied to
+            // anyone's live position, same as the web app never drew it but
+            // real Zenly always has.
+            ForEach(nightPlaces) { place in
+                Annotation(place.isHome ? "Home" : "Night place", coordinate: place.coordinate, anchor: .bottom) {
+                    NightPlacePin(place: place)
                 }
             }
         }
@@ -144,6 +158,7 @@ struct MapScreen: View {
             PersonCard(friend: friend) { throwable, power in
                 throwAt(friend, throwable, power)
             }
+            .id(theme.preference)
             // `.person-card { max-height: 69% }` — a partial sheet that keeps
             // the map visible behind it, not a full-screen takeover.
             .presentationDetents([.fraction(0.69), .large])
@@ -170,17 +185,30 @@ struct MapScreen: View {
                 // open, so clearing a row updates the bell immediately.
                 notificationCount = count
             })
+            .id(theme.preference)
             .presentationDetents([.fraction(0.66), .large])
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $activeDockSheet) { sheet in
             Group {
+                // Day/Night/Auto lives in Me, and Me updates live while it's
+                // open — the map behind it proves that. These other three
+                // don't: a `.sheet(item:)` swapping *which* case is shown
+                // without the modifier's own presentation ever fully
+                // tearing down can leave a freshly-opened Friends/Explore/
+                // Messages sheet drawn against the trait collection that was
+                // current when it was last built, not the one just picked —
+                // hence "only changes if you swipe away and come back".
+                // `.id(theme.preference)` forces a clean rebuild against
+                // whatever the current preference actually is. Left off
+                // `.me` itself so toggling a tile there doesn't reset its
+                // own in-progress edits.
                 switch sheet {
-                case .friends: FriendsView()
-                case .explore: ExploreView()
+                case .friends: FriendsView().id(theme.preference)
+                case .explore: ExploreView().id(theme.preference)
                 case .me: MeView()
-                case .messages: MessagesView()
+                case .messages: MessagesView().id(theme.preference)
                 }
             }
             // `.sheet { max-height: 66% }` on the web — the map stays visible
@@ -207,7 +235,9 @@ struct MapScreen: View {
         // First fix of the session centres the map — after that the camera is
         // the user's to move, so this only ever fires once.
         .onChange(of: location.current) { _, fix in
-            guard !hasCentredOnMe, let fix else { return }
+            guard let fix else { return }
+            refreshCityNameIfNeeded(for: fix)
+            guard !hasCentredOnMe else { return }
             hasCentredOnMe = true
             withAnimation {
                 camera = .region(MKCoordinateRegion(
@@ -260,6 +290,15 @@ struct MapScreen: View {
                 .pressable()
             }
             Spacer()
+            if let cityName {
+                Text(cityName.uppercased())
+                    .font(Theme.Font.display(13))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                    .padding(.horizontal, 13).padding(.vertical, 9)
+                    .floatingCard(radius: 16, style: .glass)
+                Spacer()
+            }
             Button { showNotifications = true } label: {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell.fill")
@@ -375,8 +414,31 @@ struct MapScreen: View {
     }
 
     private func reload(_ userId: UUID) async {
-        friends = (try? await FriendsService.load(for: userId)) ?? []
+        async let friendsTask = FriendsService.load(for: userId)
+        async let placesTask = (try? PlacesService.loadVisible()) ?? []
+        friends = (try? await friendsTask) ?? []
+        nightPlaces = await placesTask
         publishWidgetSnapshot()
+    }
+
+    /// Reverse-geocodes only after a real move (2 km), not on every fix —
+    /// `CLGeocoder` is neither free nor instant, and "Santa Monica" doesn't
+    /// need to be re-asked every 25 metres.
+    private func refreshCityNameIfNeeded(for fix: Fix) {
+        let coordinate = fix.coordinate
+        if let last = lastGeocodedCoordinate {
+            let moved = CLLocation(latitude: last.latitude, longitude: last.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            guard moved > 2000 else { return }
+        }
+        lastGeocodedCoordinate = coordinate
+        Task {
+            let placemarks = try? await CLGeocoder().reverseGeocodeLocation(
+                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            )
+            guard let place = placemarks?.first else { return }
+            cityName = place.locality ?? place.subAdministrativeArea ?? place.administrativeArea
+        }
     }
 
     /// Badge count: pending requests + unread messages — the two that mean

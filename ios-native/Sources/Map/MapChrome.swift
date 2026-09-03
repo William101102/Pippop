@@ -147,6 +147,51 @@ struct MapAvatarPin: View {
     }
 }
 
+/// A "you slept here" pin — a label bubble over a small badge, the same
+/// two-tier treatment real Zenly uses for "Night place"/"Home"/"Work" pins.
+/// Diamond + moon while the streak is still building, a plain rounded square
+/// + house once `PlacesService.homeStreakNights` nights in a row promote it
+/// to "Home" — the shape change alone reads as "this one's confirmed"
+/// without needing a third color.
+struct NightPlacePin: View {
+    let place: SignificantPlace
+
+    var body: some View {
+        VStack(spacing: 5) {
+            Text(place.isHome ? "HOME" : "NIGHT PLACE")
+                .font(Theme.Font.body(9, weight: .heavy))
+                .kerning(0.5)
+                .foregroundStyle(Theme.ink)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Theme.surface, in: Capsule())
+                .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+                .shadow(color: Theme.ink.opacity(0.14), radius: 6, y: 3)
+
+            badge
+        }
+    }
+
+    private var badge: some View {
+        ZStack {
+            if place.isHome {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(LinearGradient(colors: [Theme.coral, Color(hex: 0xE8455B)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 34, height: 34)
+            } else {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(LinearGradient(colors: [Theme.violet, Color(hex: 0x5B3FA0)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 26, height: 26)
+                    .rotationEffect(.degrees(45))
+            }
+            Image(systemName: place.isHome ? "house.fill" : "moon.stars.fill")
+                .font(.system(size: place.isHome ? 15 : 12, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .overlay(Circle().stroke(.white, lineWidth: 2).opacity(place.isHome ? 1 : 0))
+        .shadow(color: (place.isHome ? Theme.coral : Theme.violet).opacity(0.35), radius: 6, y: 4)
+    }
+}
+
 /// The closest-friend pill under the top bar — port of `.map-mood`.
 struct MapMoodPill: View {
     let friend: Friend

@@ -680,6 +680,14 @@ drop policy if exists "manage own significant places" on public.significant_plac
 create policy "manage own significant places" on public.significant_places for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Friends see the "Night place"/"Home" pin the same way they see zones —
+-- accepted friendship, location still shared. See
+-- 202609030001_significant_places_friend_read.sql for the full rationale.
+drop policy if exists "friends read significant places" on public.significant_places;
+create policy "friends read significant places" on public.significant_places for select using (
+  auth.uid() = user_id or public.shares_location_with(user_id, auth.uid())
+);
+
 -- Zenlands: you manage your own; friends can only read the label/location so
 -- an arrive/leave notice makes sense to them.
 drop policy if exists "manage own zones" on public.zones;
