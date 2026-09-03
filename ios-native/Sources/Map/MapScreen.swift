@@ -17,7 +17,13 @@ struct MapScreen: View {
     @Environment(LocationService.self) private var location
 
     @State private var friends: [Friend] = []
-    @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
+    /// Deliberately **not** `.userLocation`. Pinning the camera to the user's
+    /// location puts MapKit into follow mode, which draws its own system
+    /// location puck — a second marker sitting under our avatar pin (tinted
+    /// violet by the app's accent colour). Centring on the coordinate by hand
+    /// gives the same behaviour with our pin as the only "you" on the map.
+    @State private var camera: MapCameraPosition = .automatic
+    @State private var hasCentredOnMe = false
     @State private var selected: Friend?
     @State private var showBump = false
     @State private var showNotifications = false
@@ -198,6 +204,18 @@ struct MapScreen: View {
             }
         }
         .onDisappear { knock.stop() }
+        // First fix of the session centres the map — after that the camera is
+        // the user's to move, so this only ever fires once.
+        .onChange(of: location.current) { _, fix in
+            guard !hasCentredOnMe, let fix else { return }
+            hasCentredOnMe = true
+            withAnimation {
+                camera = .region(MKCoordinateRegion(
+                    center: fix.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                ))
+            }
+        }
         .onChange(of: DeepLink.shared.pending) { _, new in
             switch new {
             case .bump:
@@ -335,7 +353,13 @@ struct MapScreen: View {
     private func focusOnMe() {
         Haptics.shared.play(.tap)
         selected = nil
-        withAnimation { camera = .userLocation(fallback: .automatic) }
+        guard let mine = location.current else { return }
+        withAnimation {
+            camera = .region(MKCoordinateRegion(
+                center: mine.coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            ))
+        }
     }
 
     private func focus(on friend: Friend) {
@@ -447,9 +471,13 @@ struct AvatarView: View {
     var size: CGFloat = 44
     var shape: AvatarShape = .squircle
     var borderWidth: CGFloat?
-    /// `<Avatar showStatus />` — the small status-emoji disc pinned to the
-    /// bottom-right corner (`.avatar-photo i`).
+    /// `<Avatar showStatus />` — the small status-emoji disc (`.avatar-photo i`).
     var showStatus = false
+    /// Bottom-right by default, matching `.avatar-photo i`. The profile
+    /// avatar in Me flips it to the top, exactly like the web app's
+    /// `.profile-avatar i { top: -7px; bottom: auto }` — otherwise the
+    /// "Change avatar" pill hanging off the bottom edge collides with it.
+    var statusCorner: Alignment = .bottomTrailing
 
     private var stroke: CGFloat { borderWidth ?? max(2, (size * 0.065).rounded()) }
     /// `.avatar-photo { --avatar-color: var(--coral) }` — the per-profile
@@ -473,7 +501,7 @@ struct AvatarView: View {
         .clipShape(fillShape)
         .overlay(fillShape.stroke(.white, lineWidth: stroke))
         .shadow(color: Color(hex: 0x35255B).opacity(0.16), radius: 6, y: 5)
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: statusCorner) {
             if showStatus, let emoji = profile.statusEmoji {
                 Text(emoji)
                     .font(.system(size: size * 0.24))
@@ -481,7 +509,7 @@ struct AvatarView: View {
                     .background(Theme.surface, in: Circle())
                     .overlay(Circle().stroke(.white, lineWidth: 2))
                     .shadow(color: Color(hex: 0x2A1C48).opacity(0.18), radius: 3, y: 2)
-                    .offset(x: size * 0.15, y: size * 0.11)
+                    .offset(x: size * 0.15, y: statusCorner == .topTrailing ? -size * 0.11 : size * 0.11)
             }
         }
     }

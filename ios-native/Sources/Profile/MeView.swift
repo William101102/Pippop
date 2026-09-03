@@ -14,6 +14,10 @@ struct MeView: View {
     @State private var savingProfile = false
     @State private var saveNotice: String?
 
+    @State private var statusEmoji = "🏠"
+    @State private var savingStatus = false
+    @State private var statusNotice: String?
+
     @State private var avatarItem: PhotosPickerItem?
     @State private var uploadingAvatar = false
     @State private var avatarError: String?
@@ -42,6 +46,7 @@ struct MeView: View {
                         if let profile = auth.profile {
                             header(profile)
                             editCard
+                            statusCard
                             ghostModeCard
                             myWorldCard
                         }
@@ -67,6 +72,7 @@ struct MeView: View {
             displayName = auth.profile?.displayName ?? ""
             username = auth.profile?.username ?? ""
             statusText = auth.profile?.statusText ?? ""
+            statusEmoji = auth.profile?.statusEmoji ?? "🏠"
         }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }
@@ -104,7 +110,10 @@ struct MeView: View {
     private func header(_ profile: Profile) -> some View {
         HStack(spacing: 16) {
             ZStack(alignment: .bottom) {
-                AvatarView(profile: profile, size: 70, borderWidth: 4, showStatus: true)
+                // Status disc goes top-right here so the "Change avatar" pill
+                // hanging off the bottom edge doesn't sit on top of it —
+                // same reason the web app moves `.profile-avatar i` up.
+                AvatarView(profile: profile, size: 70, borderWidth: 4, showStatus: true, statusCorner: .topTrailing)
 
                 PhotosPicker(selection: $avatarItem, matching: .images) {
                     HStack(spacing: 4) {
@@ -186,7 +195,6 @@ struct MeView: View {
 
             field("Display name", text: $displayName)
             usernameField
-            field("Status (optional)", text: $statusText)
 
             if let saveNotice {
                 Text(saveNotice)
@@ -384,6 +392,116 @@ struct MeView: View {
         }
         .padding(16)
         .floatingCard(radius: 24)
+    }
+
+    /// Port of the web app's `StatusEditor` — the emoji that rides on your
+    /// avatar (map pin, rails, friend rows) plus the line under your name.
+    /// Native had the badge but no way to change it.
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("STATUS RIGHT NOW")
+                .font(Theme.Font.body(10, weight: .heavy))
+                .kerning(1.3)
+                .foregroundStyle(Theme.pink)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 6), spacing: 6) {
+                ForEach(Self.statusEmojiChoices, id: \.self) { emoji in
+                    Button {
+                        Haptics.shared.play(.tap)
+                        statusEmoji = emoji
+                    } label: {
+                        Text(emoji)
+                            .font(.system(size: 17))
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .background(
+                                statusEmoji == emoji ? Theme.violetSoft : Theme.surface,
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(statusEmoji == emoji ? Theme.violet : .clear, lineWidth: 1.5)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text(statusEmoji).font(.system(size: 17))
+                TextField("What are you up to?", text: $statusText)
+                    .font(Theme.Font.body(14, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                    .tint(Theme.violet)
+                    .onChange(of: statusText) { _, new in
+                        if new.count > 40 { statusText = String(new.prefix(40)) }
+                    }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 11)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            // One tap fills in both halves — the web app's `.status-presets`.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Self.statusPresets, id: \.text) { preset in
+                        Button {
+                            Haptics.shared.play(.tap)
+                            statusEmoji = preset.emoji
+                            statusText = preset.text
+                        } label: {
+                            Text("\(preset.emoji) \(preset.text)")
+                                .font(Theme.Font.body(11, weight: .heavy))
+                                .foregroundStyle(Theme.muted)
+                                .padding(.horizontal, 10).frame(height: 32)
+                                .background(Theme.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+
+            if let statusNotice {
+                Text(statusNotice)
+                    .font(Theme.Font.body(11, weight: .medium))
+                    .foregroundStyle(statusNotice.hasPrefix("Saved") ? Theme.muted : Theme.dangerInk)
+            }
+
+            Button {
+                Task { await saveStatus() }
+            } label: {
+                Text(savingStatus ? "Saving…" : "Update status")
+                    .font(Theme.Font.body(14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(Theme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .disabled(savingStatus)
+            .pressable()
+        }
+        .padding(16)
+        .floatingCard(radius: 24)
+    }
+
+    private static let statusEmojiChoices = ["🏠", "💼", "🍔", "🎧", "🚶", "🏃", "☕️", "🎮", "📚", "😴", "🎉", "🛫"]
+
+    private static let statusPresets: [(emoji: String, text: String)] = [
+        ("🏠", "At home"),
+        ("💼", "Working"),
+        ("🍔", "Eating"),
+        ("🎧", "Chilling"),
+        ("🚶", "Out for a walk"),
+    ]
+
+    private func saveStatus() async {
+        savingStatus = true
+        statusNotice = nil
+        defer { savingStatus = false }
+        if let error = await auth.updateStatus(emoji: statusEmoji, text: statusText) {
+            statusNotice = error
+        } else {
+            statusNotice = "Saved — friends see this on your pin."
+            Haptics.shared.play(.success)
+        }
     }
 
     /// Day / Night / Auto, side by side. Each tile is a little mock-up of

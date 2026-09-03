@@ -79,6 +79,35 @@ final class AuthService {
         }
     }
 
+    /// The Me tab's status editor — `status_emoji` + `status_text`, the pair
+    /// that shows as the little disc on your avatar and the line under your
+    /// name in a friend's list. Kept separate from `updateProfile` so the
+    /// name/username save path stays untouched.
+    ///
+    /// Port of the web app's `StatusEditor`, down to the 40-character cap and
+    /// the "write a line" validation.
+    func updateStatus(emoji: String, text: String) async -> String? {
+        guard let userId = profile?.id else { return "Not signed in" }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Write a line about what you're up to" }
+
+        struct Update: Encodable {
+            let statusEmoji: String
+            let statusText: String
+        }
+        do {
+            try await Backend.client
+                .from("profiles")
+                .update(Update(statusEmoji: emoji, statusText: String(trimmed.prefix(40))))
+                .eq("id", value: userId)
+                .execute()
+            await loadProfile(for: userId)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Re-reads the signed-in profile row. `profile` is derived from `state`,
     /// which is `private(set)`, so anything that writes to `profiles` from
     /// outside this class (the avatar upload in `ProfileService`, for one)
