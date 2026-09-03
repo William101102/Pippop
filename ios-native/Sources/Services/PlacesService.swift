@@ -116,8 +116,8 @@ enum PlacesService {
             let kind: String
             let lat: Double
             let lng: Double
-            let cellLat: Int64
-            let cellLng: Int64
+            let cellLat: Int
+            let cellLng: Int
             let score: Double
             let lastSeenAt: Date
         }
@@ -153,6 +153,9 @@ enum PlacesService {
     /// ~111 m grid — coarse enough to absorb ordinary GPS drift around a
     /// building, fine enough to keep separate addresses apart. Mirrors the
     /// `cell_lat`/`cell_lng` bigint columns already reserved for this on
-    /// `significant_places`.
-    private static func cell(_ value: Double) -> Int64 { Int64((value * 1000).rounded()) }
+    /// `significant_places`. `Int`, not `Int64` — `PostgrestFilterValue`
+    /// (needed for the `.eq(...)` lookup below) isn't conformed by `Int64`
+    /// in the SDK version this project pins; `Int` is 64-bit on iOS anyway,
+    /// so nothing is actually lost.
+    private static func cell(_ value: Double) -> Int { Int((value * 1000).rounded()) }
 }
