@@ -147,28 +147,20 @@ struct MapAvatarPin: View {
     }
 }
 
-/// A "you slept here" pin — a label bubble over a small badge, the same
-/// two-tier treatment real Zenly uses for "Night place"/"Home"/"Work" pins.
-/// Diamond + moon while the streak is still building, a plain rounded square
-/// + house once `PlacesService.homeStreakNights` nights in a row promote it
-/// to "Home" — the shape change alone reads as "this one's confirmed"
-/// without needing a third color.
+/// A "you slept here" pin: just the badge, no caption. Diamond + moon while
+/// the streak is still building, a rounded square + house once
+/// `PlacesService.homeStreakNights` nights in a row promote it to "Home" —
+/// the shape and colour change alone carry the difference.
+///
+/// It deliberately carries no text. A night place is almost always right on
+/// top of the person it belongs to, so a "NIGHT PLACE" caption (plus the
+/// annotation title MapKit draws underneath) meant three pieces of chrome
+/// stacked over one avatar — unreadable, and saying nothing the icon didn't.
 struct NightPlacePin: View {
     let place: SignificantPlace
 
     var body: some View {
-        VStack(spacing: 5) {
-            Text(place.isHome ? "HOME" : "NIGHT PLACE")
-                .font(Theme.Font.body(9, weight: .heavy))
-                .kerning(0.5)
-                .foregroundStyle(Theme.ink)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Theme.surface, in: Capsule())
-                .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
-                .shadow(color: Theme.ink.opacity(0.14), radius: 6, y: 3)
-
-            badge
-        }
+        badge
     }
 
     private var badge: some View {

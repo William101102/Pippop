@@ -19,10 +19,13 @@ struct MapScreen: View {
 
     @State private var friends: [Friend] = []
     @State private var nightPlaces: [SignificantPlace] = []
-    /// "SANTA MONICA" in the top bar — reverse-geocoded from your own fix and
-    /// only refreshed once you've actually moved, not on every ping.
+    /// "SANTA CLARA" in the top bar — reverse-geocoded from your own fix and
+    /// only refreshed once you've actually moved, not on every ping. The
+    /// geocoder is held rather than built per call: an inline one gets
+    /// released the moment the request suspends, which cancels it.
     @State private var cityName: String?
     @State private var lastGeocodedCoordinate: CLLocationCoordinate2D?
+    @State private var geocoder = CLGeocoder()
     /// Deliberately **not** `.userLocation`. Pinning the camera to the user's
     /// location puts MapKit into follow mode, which draws its own system
     /// location puck — a second marker sitting under our avatar pin (tinted
@@ -79,7 +82,11 @@ struct MapScreen: View {
             // anyone's live position, same as the web app never drew it but
             // real Zenly always has.
             ForEach(nightPlaces) { place in
-                Annotation(place.isHome ? "Home" : "Night place", coordinate: place.coordinate, anchor: .bottom) {
+                // Empty title on purpose: MapKit draws an annotation's title
+                // as a caption under the pin, which stacked a second "Night
+                // place" underneath the badge — over the top of the avatar
+                // the place almost always sits on. The icon says it.
+                Annotation("", coordinate: place.coordinate, anchor: .bottom) {
                     NightPlacePin(place: place)
                 }
             }
@@ -225,6 +232,10 @@ struct MapScreen: View {
                 await reload(id)
                 await refreshNotificationCount(id)
             }
+            // `LocationService` outlives this screen, so a fix can already be
+            // in hand when the map appears — in which case `onChange` has
+            // nothing to fire on and the city label would stay empty.
+            if let fix = location.current { refreshCityNameIfNeeded(for: fix) }
             // Two knocks = wave, three = open bump.
             knock.start { count in
                 if count >= 3 { showBump = true }
@@ -422,22 +433,38 @@ struct MapScreen: View {
     }
 
     /// Reverse-geocodes only after a real move (2 km), not on every fix —
-    /// `CLGeocoder` is neither free nor instant, and "Santa Monica" doesn't
-    /// need to be re-asked every 25 metres.
+    /// `CLGeocoder` is rate-limited, and "Santa Clara" doesn't need re-asking
+    /// every 25 metres. The distance guard is skipped while there's still no
+    /// name on screen, so a first attempt that failed gets another go on the
+    /// next fix rather than leaving the bar empty for the whole session.
+    @MainActor
     private func refreshCityNameIfNeeded(for fix: Fix) {
         let coordinate = fix.coordinate
-        if let last = lastGeocodedCoordinate {
+        if cityName != nil, let last = lastGeocodedCoordinate {
             let moved = CLLocation(latitude: last.latitude, longitude: last.longitude)
                 .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
             guard moved > 2000 else { return }
         }
+        // A second request on the same geocoder cancels the first.
+        guard !geocoder.isGeocoding else { return }
         lastGeocodedCoordinate = coordinate
-        Task {
-            let placemarks = try? await CLGeocoder().reverseGeocodeLocation(
+
+        Task { @MainActor in
+            // Two things this needs that the first cut got wrong, and why the
+            // label never appeared: the geocoder has to outlive the await (a
+            // `CLGeocoder()` built inline is released the moment the call
+            // suspends, which cancels the request), and the result has to be
+            // written back on the main actor — a bare `Task {}` in a
+            // non-isolated method hops off it.
+            let placemarks = try? await geocoder.reverseGeocodeLocation(
                 CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
             )
             guard let place = placemarks?.first else { return }
-            cityName = place.locality ?? place.subAdministrativeArea ?? place.administrativeArea
+            cityName = place.locality
+                ?? place.subLocality
+                ?? place.subAdministrativeArea
+                ?? place.administrativeArea
+                ?? place.name
         }
     }
 
