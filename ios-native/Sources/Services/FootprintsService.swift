@@ -28,6 +28,21 @@ enum FootprintsService {
             .value
     }
 
+    /// One heatmap grid cell — same shape the web app's `loadHeatmap` reads
+    /// from the `my_heatmap` RPC (see backend/supabase/setup.sql).
+    struct HeatCell: Decodable, Sendable {
+        let lat: Double
+        let lng: Double
+        let hits: Int
+    }
+
+    static func loadHeatmap(days: Int = 30) async throws -> [HeatCell] {
+        try await Backend.client
+            .rpc("my_heatmap", params: ["p_days": days])
+            .execute()
+            .value
+    }
+
     /// Human-readable duration, matching the web app's `humanMinutes`.
     static func humanMinutes(_ minutes: Double) -> String {
         if minutes < 60 { return "\(Int(minutes.rounded())) min" }

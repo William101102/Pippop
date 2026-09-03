@@ -89,6 +89,35 @@ enum GroupsService {
             .value
     }
 
+    /// Marks every unread group message addressed to a group I'm in as read
+    /// — same `read_at` convention the 1:1 thread uses. RLS on `messages`
+    /// limits the update to rows visible to me (i.e. my own groups).
+    static func markThreadRead(meId: UUID, groupId: UUID) async throws {
+        struct ReadUpdate: Encodable { let readAt: Date }
+        try await Backend.client
+            .from("messages")
+            .update(ReadUpdate(readAt: .now))
+            .eq("group_id", value: groupId)
+            .neq("sender_id", value: meId)
+            .is("read_at", value: nil)
+            .execute()
+    }
+
+    /// Unread group-message count, summed across every group I'm a member of —
+    /// feeds the bell badge so group activity isn't invisible there.
+    static func loadGroupUnreadCount(for meId: UUID) async throws -> Int {
+        struct Row: Decodable { let groupId: UUID }
+        let rows: [Row] = try await Backend.client
+            .from("messages")
+            .select("group_id")
+            .not("group_id", is: value: nil)
+            .neq("sender_id", value: meId)
+            .is("read_at", value: nil)
+            .execute()
+            .value
+        return rows.count
+    }
+
     static func send(senderId: UUID, groupId: UUID, body: String) async throws {
         let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw MessageError.empty }

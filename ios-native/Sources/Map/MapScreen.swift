@@ -25,6 +25,9 @@ struct MapScreen: View {
     @State private var highlightsByUser: [UUID: [Highlight]] = [:]
     @State private var showPostHighlight = false
     @State private var viewingHighlightsFor: HighlightViewerTarget?
+    @State private var heatCells: [FootprintsService.HeatCell] = []
+    @State private var heatVisible = false
+    @State private var heatLoading = false
 
     private struct HighlightViewerTarget: Identifiable {
         let profile: Profile
@@ -43,6 +46,23 @@ struct MapScreen: View {
             set: { id in selected = friends.first { $0.id == id } }
         )) {
             UserAnnotation()
+            // Footprint heatmap: translucent circles over the grid cells the
+            // my_heatmap RPC returns, tinted hotter the more I've been there.
+            if heatVisible {
+                let busiest = heatCells.map(\.hits).max() ?? 0
+                ForEach(Array(heatCells.enumerated()), id: \.offset) { _, cell in
+                    let weight = busiest > 0 ? sqrt(Double(cell.hits) / Double(busiest)) : 0
+                    MapCircle(
+                        center: CLLocationCoordinate2D(latitude: cell.lat, longitude: cell.lng),
+                        radius: CLLocationDistance(60 + weight * 140)
+                    )
+                    .foregroundStyle(
+                        weight > 0.66 ? Theme.pink.opacity(0.5)
+                        : weight > 0.33 ? Theme.coral.opacity(0.42)
+                        : Theme.yellow.opacity(0.35)
+                    )
+                }
+            }
             ForEach(friends) { friend in
                 if let coordinate = friend.location?.coordinate {
                     Annotation(friend.displayName, coordinate: coordinate) {
@@ -245,6 +265,18 @@ struct MapScreen: View {
                     .floatingCard(radius: 22)
             }
             .pressable()
+            Button {
+                Haptics.shared.play(.tap)
+                if heatCells.isEmpty && !heatLoading { Task { await loadHeatmap() } }
+                heatVisible.toggle()
+            } label: {
+                Image(systemName: heatVisible ? "flame.fill" : "flame")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(heatVisible ? Theme.coral : Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .floatingCard(radius: 22)
+            }
+            .pressable()
         }
         .padding(.horizontal, 14)
     }
@@ -295,13 +327,20 @@ struct MapScreen: View {
         highlightsByUser = (try? await HighlightsService.loadFriendHighlights()) ?? [:]
     }
 
-    /// Badge count: pending requests + unread messages — the two that mean
-    /// "something needs your attention" rather than just "something happened".
+    private func loadHeatmap() async {
+        heatLoading = true
+        defer { heatLoading = false }
+        heatCells = (try? await FootprintsService.loadHeatmap()) ?? []
+    }
+
+    /// Badge count: pending requests + unread 1:1 messages + unread group
+    /// messages — the three that mean "something needs your attention".
     private func refreshNotificationCount(_ userId: UUID) async {
         async let requests = (try? FriendsService.loadRequests(for: userId)) ?? []
         async let unread = (try? MessagesService.loadUnreadCounts(for: userId)) ?? [:]
-        let (r, u) = await (requests, unread)
-        notificationCount = r.count + u.values.reduce(0, +)
+        async let groupUnread = (try? GroupsService.loadGroupUnreadCount(for: userId)) ?? 0
+        let (r, u, g) = await (requests, unread, groupUnread)
+        notificationCount = r.count + u.values.reduce(0, +) + g
     }
 
     /// Hand the home-screen widget a fresh snapshot. The widget never queries

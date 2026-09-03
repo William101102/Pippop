@@ -26,11 +26,14 @@ None of these four were reported by William — they were caught by re-reading t
 ## Deliberate simplifications (not bugs)
 
 - **Chat has no live push — it polls.** Both 1:1 (`ChatView`) and group (`GroupChatView`) threads re-fetch every 4 seconds while the screen is open, instead of subscribing to `supabase_realtime` on `messages`. Simple, and good enough for a chat that's mostly used synchronously, but a message won't appear until the next poll tick, and the app doesn't notify you of a new message while you're not looking at the thread.
-- **Footprints has no heatmap.** Only the *list* of frequent places (`my_frequent_places` RPC) is shown, in `MeView`'s "My World" section. The web app's actual heatmap overlay would need a custom `MKOverlay`/`MKOverlayRenderer` on the map — bigger, separate work, not started.
-- **The notification bell doesn't count unread group messages**, only pending friend requests and unread 1:1 messages — group unread-counting wasn't wired into `refreshNotificationCount`.
 - **Highlights are photo-or-text, not video.** A story is either one photo (resized client-side to 960px, JPEG) with an optional caption, or a text-only card if no photo is attached — matches the web app's own scope.
 - **Group creation requires at least 2 other people** (3 total) — picked so "group chat" doesn't overlap with an ordinary 1:1 conversation; there's no technical reason it couldn't be lower if that's not the right call.
-- **Google's official "G" logo isn't in yet.** `SignInView` still uses `Image(systemName: "g.circle.fill")` as a stand-in — swap before shipping, since Google's brand guidelines require their real asset.
+
+## Closed since the last rewrite
+
+- **Footprint heatmap is in.** `MapScreen` now has a 🔥 toggle that loads the `my_heatmap` RPC (`FootprintsService.loadHeatmap`) and renders each grid cell as a translucent `MapCircle` on the SwiftUI map — yellow/coral/pink ramp weighted by visit count, mirroring the web app's Leaflet circles.
+- **The notification bell counts unread group messages.** `GroupsService.loadGroupUnreadCount` feeds `refreshNotificationCount`, and opening a group thread (`GroupChatView`) marks its messages read via the new `GroupsService.markThreadRead`, so the badge actually drops.
+- **Google's official multicolor "G" logo is in.** `SignInView` renders the official 46×48 branding asset as inline `Path` vector data (`GoogleMark`), so it complies with Google's guidelines without needing an asset catalog.
 
 ## Not yet verified
 

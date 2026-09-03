@@ -52,6 +52,10 @@ struct GroupChatView: View {
         .background(Theme.ground)
         .task {
             await load()
+            // Opened the thread = read everything in it, so the bell badge drops.
+            if let meId = auth.profile?.id {
+                try? await GroupsService.markThreadRead(meId: meId, groupId: group.id)
+            }
             startPolling()
         }
         .onDisappear { pollTask?.cancel() }
