@@ -7,6 +7,10 @@ struct PinpopApp: App {
     @State private var location = LocationService()
     @State private var motion = MotionActivityService()
     @State private var theme = ThemeStore()
+    /// A singleton rather than `@State`, because `LocationService` has to
+    /// reach it from a background relaunch where no view exists.
+    private let autoStatus = AutoStatusService.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +18,7 @@ struct PinpopApp: App {
                 .environment(auth)
                 .environment(location)
                 .environment(motion)
+                .environment(autoStatus)
                 .environment(theme)
                 .tint(Theme.violet)
                 // This used to be pinned to `.light`, because every surface
@@ -26,13 +31,21 @@ struct PinpopApp: App {
                 // theme button, exactly like the web app's toggle.
                 .preferredColorScheme(theme.preference.colorScheme)
                 .task {
-                    // Both of these have to happen at *app* level, not on the
+                    // All of these have to happen at *app* level, not on the
                     // map screen: iOS relaunches this app in the background
                     // for a significant location change or a visit, and on
                     // that launch no view ever appears to kick things off.
                     location.resume()
                     motion.start()
+                    autoStatus.start()
                     await auth.start()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    // Being in the app is the clearest possible "awake", and
+                    // it's also the clock AutoStatusService measures idleness
+                    // from — see its note on why iOS can't tell an app
+                    // whether the *phone* is being used.
+                    if phase == .active { autoStatus.noteAppActive() }
                 }
                 .onOpenURL { url in
                     // Google's OAuth callback, plus pinpop:// invite links.

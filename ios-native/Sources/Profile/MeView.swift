@@ -7,6 +7,7 @@ struct MeView: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
     @Environment(MotionActivityService.self) private var motion
+    @Environment(AutoStatusService.self) private var autoStatus
     @Environment(ThemeStore.self) private var theme
     @Environment(\.dismiss) private var dismiss
 
@@ -49,6 +50,7 @@ struct MeView: View {
                             header(profile)
                             editCard
                             statusCard
+                            autoStatusCard
                             ghostModeCard
                             backgroundLocationCard
                             myWorldCard
@@ -76,6 +78,17 @@ struct MeView: View {
             username = auth.profile?.username ?? ""
             statusText = auth.profile?.statusText ?? ""
             statusEmoji = auth.profile?.statusEmoji ?? "🏠"
+
+            // AutoStatusService writes to `profiles` directly (it has to work
+            // from a background relaunch, where there's no AuthService to go
+            // through), so the copy held in memory can be behind. Re-read it
+            // before showing the editor, or the fields here would disagree
+            // with the status already on your own pin.
+            Task {
+                await auth.refreshProfile()
+                statusText = auth.profile?.statusText ?? statusText
+                statusEmoji = auth.profile?.statusEmoji ?? statusEmoji
+            }
         }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }
@@ -505,6 +518,35 @@ struct MeView: View {
             statusNotice = "Saved — friends see this on your pin."
             Haptics.shared.play(.success)
         }
+    }
+
+    /// The switch for `AutoStatusService`. Something that edits your public
+    /// status on your behalf has to be visible and turn-off-able, and it has
+    /// to say plainly what it's reading — hence the second line.
+    private var autoStatusCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: Binding(
+                get: { autoStatus.isEnabled },
+                set: { autoStatus.isEnabled = $0 }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Set my status automatically")
+                        .font(Theme.Font.body(13, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                    Text("🏠 at home, 💼 at work, 💤 once you've been asleep a while.")
+                        .font(Theme.Font.body(10, weight: .medium))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+            .tint(Theme.violet)
+
+            Text("Only changes when you actually arrive somewhere or wake up — a status you set yourself stays put until then. Needs Always location; sleep also needs Motion & Fitness.")
+                .font(Theme.Font.body(10, weight: .medium))
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .floatingCard(radius: 24)
     }
 
     /// Background location — the difference between "friends see you while

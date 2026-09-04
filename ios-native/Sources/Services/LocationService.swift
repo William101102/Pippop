@@ -233,6 +233,8 @@ extension LocationService: CLLocationManagerDelegate {
             self.isDenied = false
             if let userId = self.userId {
                 PlacesService.maybeRecordNightSample(fix, userId: userId)
+                // Arriving somewhere is the event that flips 🏠 / 💼 on.
+                await AutoStatusService.shared.evaluate(userId: userId, fix: fix)
             }
             guard self.gate.shouldPersist(fix) else { return }
             self.gate.commit(fix)
@@ -247,7 +249,10 @@ extension LocationService: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
         Task { @MainActor in
             guard let userId = self.userId else { return }
+            // One visit can be evidence of both: nights at home, weekdays at
+            // the office. Each looks at a different window of the same stay.
             PlacesService.recordNights(from: visit, userId: userId)
+            PlacesService.recordWorkdays(from: visit, userId: userId)
         }
     }
 

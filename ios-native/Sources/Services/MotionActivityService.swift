@@ -83,6 +83,44 @@ final class MotionActivityService {
         mode = .unknown
     }
 
+    /// Was this phone left alone for the whole window ending now?
+    ///
+    /// Answered from the coprocessor's **recorded history** rather than from
+    /// live updates, which is the only reason sleep detection can work at
+    /// all: the app is not running at 2 AM, but the phone was still writing
+    /// this log, and roughly a week of it can be read back at any time.
+    ///
+    /// "Still" means no confident walking/running/cycling/automotive sample
+    /// in the window. A phone on a nightstand qualifies; a phone being held,
+    /// carried or typed on does not.
+    static func hasBeenStill(since start: Date) async -> Bool {
+        guard CMMotionActivityManager.isActivityAvailable(),
+              CMMotionActivityManager.authorizationStatus() == .authorized
+        else { return false }
+
+        let manager = CMMotionActivityManager()
+        return await withCheckedContinuation { continuation in
+            var resumed = false
+            manager.queryActivityStarting(from: start, to: Date(), to: .main) { activities, _ in
+                // The handler is documented as one-shot, but resuming a
+                // continuation twice is a crash, so this refuses to.
+                guard !resumed else { return }
+                resumed = true
+                guard let activities, !activities.isEmpty else {
+                    // No samples at all means no evidence of stillness
+                    // either — don't call that sleep.
+                    continuation.resume(returning: false)
+                    return
+                }
+                let moved = activities.contains { activity in
+                    guard activity.confidence != .low else { return false }
+                    return activity.walking || activity.running || activity.cycling || activity.automotive
+                }
+                continuation.resume(returning: !moved)
+            }
+        }
+    }
+
     private static func mode(for activity: CMMotionActivity) -> Mode {
         // Order matters: iOS can flag more than one at a time (automotive and
         // stationary are both true at a red light, which should read as

@@ -28,12 +28,21 @@ enum Fmt {
     /// The same speed split into the two lines Zenly's badge stacks — a big
     /// number over a small unit. Follows the phone's own measurement system,
     /// so a US device reads "18 / MPH" and a metric one "29 / KM/H".
-    static func speedBadge(_ metresPerSecond: Double?) -> (value: String, unit: String)? {
-        guard let metresPerSecond, metresPerSecond > 0 else { return nil }
+    ///
+    /// `holdingZero` is for someone who is still *in a car* but not moving —
+    /// at a light, in traffic. Dropping the badge there reads as "they
+    /// stopped sharing"; showing 0 reads as "they're sat at a light", which
+    /// is the true and more useful answer. Only motion detection can tell
+    /// those apart, so the caller passes it in.
+    static func speedBadge(_ metresPerSecond: Double?, holdingZero: Bool = false) -> (value: String, unit: String)? {
         let metric = Locale.current.measurementSystem != .us
+        let unit = metric ? "KM/H" : "MPH"
+        guard let metresPerSecond, metresPerSecond > 0 else {
+            return holdingZero ? ("0", unit) : nil
+        }
         let converted = metresPerSecond * (metric ? 3.6 : 2.236_936_3)
-        guard converted >= 2 else { return nil }
-        return (String(format: "%.0f", converted), metric ? "KM/H" : "MPH")
+        guard converted >= 2 else { return holdingZero ? ("0", unit) : nil }
+        return (String(format: "%.0f", converted), unit)
     }
 }
 
@@ -70,6 +79,9 @@ struct MapAvatarPin: View {
     var isLive: Bool = true
     /// Metres per second, straight off the fix.
     var speed: Double?
+    /// Keep the badge on screen at 0 rather than hiding it — set while the
+    /// person is in a vehicle but momentarily stopped.
+    var holdsZeroSpeed: Bool = false
     /// "3h ago" — shown instead of a speed once the fix is stale.
     var staleLabel: String?
 
@@ -108,7 +120,7 @@ struct MapAvatarPin: View {
                 }
                 .frame(width: 60, height: 60)
 
-                if let badge = Fmt.speedBadge(speed) {
+                if let badge = Fmt.speedBadge(speed, holdingZero: holdsZeroSpeed) {
                     VStack(spacing: -2) {
                         Text(badge.value)
                             .font(Theme.Font.display(15))
@@ -147,40 +159,192 @@ struct MapAvatarPin: View {
     }
 }
 
-/// A "you slept here" pin: just the badge, no caption. Diamond + moon while
-/// the streak is still building, a rounded square + house once
-/// `PlacesService.homeStreakNights` nights in a row promote it to "Home" —
-/// the shape and colour change alone carry the difference.
+// MARK: - Isometric place markers
+
+/// One face of a little isometric solid, in screen space.
 ///
-/// It deliberately carries no text. A night place is almost always right on
-/// top of the person it belongs to, so a "NIGHT PLACE" caption (plus the
-/// annotation title MapKit draws underneath) meant three pieces of chrome
-/// stacked over one avatar — unreadable, and saying nothing the icon didn't.
+/// Everything in the 3D place pins is built from these rather than from an
+/// SF Symbol, because a flat glyph on a tilted map never reads as *standing
+/// on* the ground — Zenly's own place markers are little modelled objects,
+/// and three shaded faces are all it takes to get the same effect.
+private struct IsoFace: Shape {
+    let points: [CGPoint]
+
+    /// Points are given in a 0...1 box so a marker can be drawn at any size.
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        func place(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: rect.minX + p.x * rect.width, y: rect.minY + p.y * rect.height)
+        }
+        path.move(to: place(first))
+        for point in points.dropFirst() { path.addLine(to: place(point)) }
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A house or an office block, drawn as three shaded faces plus a roof, with
+/// a soft ellipse on the ground under it so it sits on the map instead of
+/// floating over it.
+private struct IsoBuilding: View {
+    enum Style {
+        /// Confirmed home — the warm one, with a pitched roof.
+        case home
+        /// Slept here, streak still building — same house, cooler and dimmer.
+        case overnight
+        /// Confirmed workplace — a taller block with windows.
+        case work
+
+        var top: Color {
+            switch self {
+            case .home: Color(hex: 0xFF8A6B)
+            case .overnight: Color(hex: 0x8B79F0)
+            case .work: Color(hex: 0x5AC8E0)
+            }
+        }
+
+        var left: Color {
+            switch self {
+            case .home: Color(hex: 0xF2604F)
+            case .overnight: Color(hex: 0x6B54D8)
+            case .work: Color(hex: 0x3AA5C4)
+            }
+        }
+
+        var right: Color {
+            switch self {
+            case .home: Color(hex: 0xC93B3F)
+            case .overnight: Color(hex: 0x4B36A8)
+            case .work: Color(hex: 0x2A7E9C)
+            }
+        }
+
+        var roof: Color {
+            switch self {
+            case .home: Color(hex: 0xFFFFFF)
+            case .overnight: Color(hex: 0xE9E3FF)
+            case .work: Color(hex: 0xE8F7FC)
+            }
+        }
+    }
+
+    let style: Style
+    var size: CGFloat = 46
+
+    /// Body height as a fraction of the box — the office block stands taller
+    /// than the house, which is most of what tells them apart at a glance.
+    private var wallTop: CGFloat { style == .work ? 0.30 : 0.46 }
+
+    var body: some View {
+        ZStack {
+            // Ground shadow.
+            Ellipse()
+                .fill(Color(hex: 0x2A1C48).opacity(0.22))
+                .frame(width: size * 0.62, height: size * 0.18)
+                .offset(y: size * 0.42)
+                .blur(radius: 2.5)
+
+            ZStack {
+                if style == .work {
+                    // Flat roof.
+                    IsoFace(points: [
+                        CGPoint(x: 0.5, y: wallTop - 0.18),
+                        CGPoint(x: 0.94, y: wallTop),
+                        CGPoint(x: 0.5, y: wallTop + 0.18),
+                        CGPoint(x: 0.06, y: wallTop),
+                    ])
+                    .fill(style.top)
+                } else {
+                    // Pitched roof: two planes meeting at a ridge, so the
+                    // house reads as a house and not as a cube.
+                    IsoFace(points: [
+                        CGPoint(x: 0.5, y: 0.02),
+                        CGPoint(x: 0.98, y: wallTop),
+                        CGPoint(x: 0.5, y: wallTop + 0.17),
+                        CGPoint(x: 0.02, y: wallTop),
+                    ])
+                    .fill(style.roof)
+                    IsoFace(points: [
+                        CGPoint(x: 0.5, y: 0.02),
+                        CGPoint(x: 0.98, y: wallTop),
+                        CGPoint(x: 0.5, y: wallTop + 0.17),
+                    ])
+                    .fill(style.roof.opacity(0.72))
+                }
+
+                // Left wall.
+                IsoFace(points: [
+                    CGPoint(x: 0.06, y: wallTop),
+                    CGPoint(x: 0.5, y: wallTop + 0.18),
+                    CGPoint(x: 0.5, y: 0.92),
+                    CGPoint(x: 0.06, y: 0.74),
+                ])
+                .fill(style.left)
+
+                // Right wall, a shade darker so the light has a direction.
+                IsoFace(points: [
+                    CGPoint(x: 0.94, y: wallTop),
+                    CGPoint(x: 0.5, y: wallTop + 0.18),
+                    CGPoint(x: 0.5, y: 0.92),
+                    CGPoint(x: 0.94, y: 0.74),
+                ])
+                .fill(style.right)
+
+                detail
+            }
+            .frame(width: size, height: size)
+            .compositingGroup()
+            .shadow(color: style.right.opacity(0.4), radius: 5, y: 4)
+        }
+        .frame(width: size, height: size * 1.15)
+    }
+
+    /// The one mark that says which building this is: a lit window on the
+    /// house, a grid of them on the office.
+    @ViewBuilder
+    private var detail: some View {
+        switch style {
+        case .home, .overnight:
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(.white.opacity(style == .home ? 0.92 : 0.55))
+                .frame(width: size * 0.11, height: size * 0.13)
+                .offset(x: -size * 0.17, y: size * 0.16)
+        case .work:
+            VStack(spacing: size * 0.05) {
+                ForEach(0..<2, id: \.self) { _ in
+                    HStack(spacing: size * 0.05) {
+                        ForEach(0..<2, id: \.self) { _ in
+                            Rectangle()
+                                .fill(.white.opacity(0.75))
+                                .frame(width: size * 0.07, height: size * 0.08)
+                        }
+                    }
+                }
+            }
+            .offset(x: -size * 0.16, y: size * 0.2)
+        }
+    }
+}
+
+/// The marker for a place someone keeps coming back to — where they sleep,
+/// or where they work.
+///
+/// No caption on purpose. These sit almost on top of the person they belong
+/// to, so a text bubble (plus the caption MapKit draws from the annotation
+/// title) meant three pieces of chrome stacked over one avatar. The little
+/// modelled building carries it: pitched-roof house for a night place, the
+/// same house in warm coral once it's home, a taller block for a workplace.
 struct NightPlacePin: View {
     let place: SignificantPlace
 
-    var body: some View {
-        badge
+    private var style: IsoBuilding.Style {
+        if place.isWorkplace { return .work }
+        return place.isHome ? .home : .overnight
     }
 
-    private var badge: some View {
-        ZStack {
-            if place.isHome {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(LinearGradient(colors: [Theme.coral, Color(hex: 0xE8455B)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 34, height: 34)
-            } else {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(LinearGradient(colors: [Theme.violet, Color(hex: 0x5B3FA0)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 26, height: 26)
-                    .rotationEffect(.degrees(45))
-            }
-            Image(systemName: place.isHome ? "house.fill" : "moon.stars.fill")
-                .font(.system(size: place.isHome ? 15 : 12, weight: .bold))
-                .foregroundStyle(.white)
-        }
-        .overlay(Circle().stroke(.white, lineWidth: 2).opacity(place.isHome ? 1 : 0))
-        .shadow(color: (place.isHome ? Theme.coral : Theme.violet).opacity(0.35), radius: 6, y: 4)
+    var body: some View {
+        IsoBuilding(style: style, size: place.isHome || place.isWorkplace ? 48 : 40)
     }
 }
 

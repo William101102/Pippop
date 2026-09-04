@@ -59,11 +59,19 @@ struct MapScreen: View {
                 // `anchor: .bottom` so the teardrop's tip is what sits on the
                 // coordinate, not the middle of the avatar.
                 Annotation("You", coordinate: mine.coordinate, anchor: .bottom) {
-                    // Motion has the last word on whether a speed shows at
-                    // all: the coprocessor knows a phone on a desk is
-                    // stationary no matter what the GPS is claiming, which no
-                    // amount of filtering the speed value can tell you.
-                    MapAvatarPin(profile: profile, isLive: true, speed: motion.isMoving ? mine.speed : nil)
+                    // Motion has the last word on the speed badge: the
+                    // coprocessor knows a phone on a desk is stationary no
+                    // matter what the GPS claims, which no amount of
+                    // filtering the speed value can tell you — and it also
+                    // knows the difference between "not moving" and "in a car
+                    // at a red light", which is the one case where the badge
+                    // should stay up and read 0.
+                    MapAvatarPin(
+                        profile: profile,
+                        isLive: true,
+                        speed: motion.isMoving ? mine.speed : nil,
+                        holdsZeroSpeed: motion.mode == .driving
+                    )
                         .onTapGesture {
                             Haptics.shared.play(.tap)
                             activeDockSheet = .me
@@ -485,13 +493,25 @@ struct MapScreen: View {
     private func refreshNotificationCount(_ userId: UUID) async {
         async let requestsTask = (try? FriendsService.loadRequests(for: userId)) ?? []
         async let unreadTask = (try? MessagesService.loadUnreadCounts(for: userId)) ?? [:]
-        let (requests, unread) = await (requestsTask, unreadTask)
+        async let reactionsTask = (try? SocialService.loadMyReactions(for: userId)) ?? []
+        async let eventsTask = (try? SocialService.loadPlaceEvents()) ?? []
+        let (requests, unread, reactions, events) = await (requestsTask, unreadTask, reactionsTask, eventsTask)
+
         let friendIds = Set(friends.map(\.id))
         let unreadFromFriends = unread
             .filter { friendIds.contains($0.key) }
             .values
             .reduce(0, +)
-        notificationCount = requests.count + unreadFromFriends
+
+        // Same four things `NotificationsView.visibleCount` counts, filtered
+        // the same way — your own rows don't count, and neither do ones
+        // already swiped away. Counting a different set here is what left the
+        // bell disagreeing with the list it opens.
+        let dismissed = DismissedNotifications.load()
+        let liveReactions = reactions.filter { $0.senderId != userId && !dismissed.contains($0.id) }
+        let liveEvents = events.filter { $0.userId != userId && !dismissed.contains($0.id) }
+
+        notificationCount = requests.count + unreadFromFriends + liveReactions.count + liveEvents.count
     }
 
     /// Hand the home-screen widget a fresh snapshot. The widget never queries

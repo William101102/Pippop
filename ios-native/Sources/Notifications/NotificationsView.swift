@@ -67,10 +67,17 @@ struct NotificationsView: View {
         !unreadPreviews.isEmpty || !shownReactions.isEmpty || !shownEvents.isEmpty
     }
 
-    /// What the bell badge should read: the rows that actually need you, and
-    /// only ones this panel is showing.
+    /// What the bell badge should read: exactly the rows this panel is
+    /// showing, nothing else. Reactions and place events were missing from
+    /// this count, which is how the bell could read 0 while a row sat on
+    /// screen. `MapScreen.refreshNotificationCount` counts the same four
+    /// things — the two have to agree or the badge goes wrong again the next
+    /// time the sheet closes.
     private var visibleCount: Int {
-        requests.count + unreadPreviews.reduce(0) { $0 + $1.count }
+        requests.count
+            + unreadPreviews.reduce(0) { $0 + $1.count }
+            + shownReactions.count
+            + shownEvents.count
     }
 
     var body: some View {
@@ -386,8 +393,13 @@ struct NotificationsView: View {
         let friends = (try? await friendsTask) ?? []
         requests = (try? await requestsTask) ?? []
         let unreadCounts = (try? await unreadCountsTask) ?? [:]
-        reactions = (try? await reactionsTask) ?? []
-        placeEvents = (try? await placeEventsTask) ?? []
+        // Your own rows have no business in your own notifications. RLS on
+        // both tables returns "mine or my friends'", and nothing was
+        // filtering out the "mine" half — which is how an arrival *you* made
+        // showed up here as "A friend arrived at …" (the name lookup only
+        // knows friends, so your own id fell through to the placeholder).
+        reactions = ((try? await reactionsTask) ?? []).filter { $0.senderId != meId }
+        placeEvents = ((try? await placeEventsTask) ?? []).filter { $0.userId != meId }
 
         friendNameById = Dictionary(uniqueKeysWithValues: friends.map { ($0.id, $0.displayName) })
 

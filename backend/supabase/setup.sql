@@ -174,6 +174,18 @@ create table if not exists public.significant_places (
   unique (user_id, kind, cell_lat, cell_lng)
 );
 
+-- `kind` is reset here rather than left to whatever the table was created
+-- with, because 202608300007_overnight_places_only.sql narrowed it to
+-- 'overnight' alone and workplace detection needs 'work' back. ('home' stays
+-- retired: home isn't a kind, it's an overnight place whose consecutive-night
+-- streak has passed the threshold — see PlacesService.) Idempotent, so it
+-- lands the same way on a fresh database or an existing one.
+alter table public.significant_places
+  drop constraint if exists significant_places_kind_check;
+alter table public.significant_places
+  add constraint significant_places_kind_check check (kind in ('overnight', 'work'));
+delete from public.significant_places where kind not in ('overnight', 'work');
+
 create table if not exists public.places (
   id uuid primary key default gen_random_uuid(),
   name text not null,
