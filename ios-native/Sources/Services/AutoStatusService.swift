@@ -57,10 +57,13 @@ final class AutoStatusService {
 
     /// How still, and for how long, before we'll call it sleep.
     private static let sleepStillness: TimeInterval = 30 * 60
-    /// Local hours sleep is even considered in. Wide, because the stillness
-    /// test is doing the real work — this only stops an afternoon nap on the
-    /// sofa, or a long film, from flipping you to 💤 at 3pm.
-    private static let sleepHours = 21...9
+    /// Local hours sleep is even considered in, as two bounds rather than a
+    /// `Range`: this window wraps midnight, and `21...9` is not a range Swift
+    /// will build — a `ClosedRange` traps on construction when `lowerBound >
+    /// upperBound`. Kept wide because the stillness test does the real work;
+    /// this only stops an afternoon nap, or a long film, reading as 💤 at 3pm.
+    private static let sleepFromHour = 21
+    private static let sleepUntilHour = 9
     /// How close to a place counts as being there. Generous on purpose: a
     /// fix indoors drifts, and flapping between "At home" and nothing is
     /// worse than being slightly early.
@@ -174,8 +177,8 @@ final class AutoStatusService {
 
         let now = Date()
         let hour = Calendar.current.component(.hour, from: now)
-        // The range wraps midnight, so it can't be a plain `contains`.
-        let isNight = hour >= Self.sleepHours.lowerBound || hour <= Self.sleepHours.upperBound
+        // Wraps midnight, hence `||` rather than a range check.
+        let isNight = hour >= Self.sleepFromHour || hour <= Self.sleepUntilHour
         guard isNight else { return false }
 
         let lastActive = Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: Self.lastActiveKey))
