@@ -5,6 +5,7 @@ import WidgetKit
 struct PinpopWidgetBundle: WidgetBundle {
     var body: some Widget {
         BumpLiveActivity()
+        MeetupLiveActivity()
         NearbyFriendsWidget()
     }
 }

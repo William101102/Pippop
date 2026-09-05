@@ -253,6 +253,13 @@ struct MapScreen: View {
         .onChange(of: location.current) { _, fix in
             guard let fix else { return }
             refreshCityNameIfNeeded(for: fix)
+            // Feed the Dynamic Island trip, if one is running. The controller
+            // decides whether this fix is worth an update — see its note on
+            // ActivityKit's budget.
+            if let id = MeetupActivityController.shared.friendId,
+               let friend = friends.first(where: { $0.id == id }) {
+                Task { await MeetupActivityController.shared.update(friend: friend, from: fix) }
+            }
             guard !hasCentredOnMe else { return }
             hasCentredOnMe = true
             withAnimation {
@@ -603,12 +610,18 @@ struct AvatarView: View {
     var body: some View {
         ZStack {
             fillShape.fill(tint)
+            // Sits behind the photo rather than being a placeholder swapped
+            // out for it — so the first frame is already a proper avatar, and
+            // there's no gap where neither is drawn.
+            initial
             if let urlString = profile.avatarUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    initial
-                }
+                // Not `AsyncImage`: the map pin is rebuilt on every location
+                // fix, and AsyncImage restarts its load each time, dropping
+                // back to the tint underneath while it does. `AvatarImage`
+                // caches the decoded photo and pins it to the avatar's exact
+                // square, so nothing shows through and nothing flickers while
+                // you move.
+                AvatarImage(url: url, size: size)
             } else {
                 initial
             }

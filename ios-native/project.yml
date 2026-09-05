@@ -197,12 +197,28 @@ targets:
       # Shared/ is compiled into BOTH targets — the activity attributes and
       # the snapshot format must be the same types on each side.
       - path: Sources/Shared
+      # The fonts ship in both bundles. An extension gets its own bundle and
+      # its own font registration; it cannot borrow either from the host app,
+      # so without this the Dynamic Island silently renders in San Francisco
+      # while the app renders in Fredoka.
+      - path: Sources/Resources/Fonts
+        buildPhase: resources
     info:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: Pinpop
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        # Same list as the app's, for the same reason: bundled files that
+        # aren't declared here are never registered with CoreText.
+        UIAppFonts:
+          - Fredoka-Medium.ttf
+          - Fredoka-SemiBold.ttf
+          - Fredoka-Bold.ttf
+          - DMSans-Medium.ttf
+          - DMSans-SemiBold.ttf
+          - DMSans-Bold.ttf
+          - DMSans-ExtraBold.ttf
     entitlements:
       path: Widgets/PinpopWidgets.entitlements
       properties:

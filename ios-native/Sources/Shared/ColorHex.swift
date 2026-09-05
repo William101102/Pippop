@@ -33,10 +33,35 @@ enum Brand {
     static let pink = Color(hex: 0xFF3F8E)
     static let violet = Color(hex: 0x5B35F2)
     static let night = Color(hex: 0x1B1430)
+    /// "Sharing right now" green — the same one the map pin's ring uses.
+    static let live = Color(hex: 0x25CC92)
 
     static let gradient = LinearGradient(
         colors: [Color(hex: 0xFF7B42), Color(hex: 0xFF3E86)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+
+    // The app's two families, mirrored here so the widget extension can use
+    // them without compiling `Theme` (which would drag in the whole design
+    // system). The .ttf files now ship in **both** bundles and are listed in
+    // both Info.plists — see `UIAppFonts` in project.yml. `Font.custom`
+    // falls back to the system font when a name isn't found, so if the
+    // Dynamic Island ever renders in SF, that bundling is what to check.
+    static func display(_ size: CGFloat) -> Font {
+        .custom("Fredoka-Bold", size: size)
+    }
+
+    static func text(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .custom(dmSansName(for: weight), size: size)
+    }
+
+    private static func dmSansName(for weight: Font.Weight) -> String {
+        switch weight {
+        case .heavy, .black: "DMSans-ExtraBold"
+        case .bold: "DMSans-Bold"
+        case .semibold: "DMSans-SemiBold"
+        default: "DMSans-Medium"
+        }
+    }
 }

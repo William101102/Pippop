@@ -18,6 +18,40 @@ struct PersonCard: View {
     /// — big enough gaps that crossing one actually feels like an event.
     private static let streakMilestones = [3, 7, 14, 30, 50, 100, 200, 365]
 
+    /// Starts (or stops) the Dynamic Island trip. Only offered when there's
+    /// actually something to navigate towards — both sides need a position
+    /// for a distance and a bearing to mean anything.
+    @ViewBuilder
+    private var headingButton: some View {
+        if meetup.isRunning, meetup.friendId == friend.id {
+            Button {
+                Haptics.shared.play(.tap)
+                meetup.end()
+            } label: {
+                Label("Stop heading there", systemImage: "stop.circle.fill")
+                    .font(Theme.Font.body(14, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Theme.fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .pressable()
+        } else if let mine = location.current, friend.location != nil {
+            Button {
+                Haptics.shared.play(.success)
+                meetup.start(friend: friend, from: mine)
+            } label: {
+                Label("Head there", systemImage: "location.north.fill")
+                    .font(Theme.Font.body(14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Theme.brandGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .pressable()
+        }
+    }
+
+    private var meetup: MeetupActivityController { .shared }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -46,6 +80,8 @@ struct PersonCard: View {
                 if let compass = compassInfo {
                     PersonCompassCard(distanceLabel: compass.distance, directionLabel: compass.direction, isLive: friend.isLive, headingDegrees: compass.heading)
                 }
+
+                headingButton
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("THROW SOMETHING")
