@@ -16,6 +16,7 @@ struct MapScreen: View {
     @Environment(AuthService.self) private var auth
     @Environment(LocationService.self) private var location
     @Environment(MotionActivityService.self) private var motion
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var friends: [Friend] = []
     @State private var nightPlaces: [SignificantPlace] = []
@@ -282,13 +283,34 @@ struct MapScreen: View {
                 break
             }
         }
-        // Requests/messages/reactions change while sheets are open — recount
-        // the bell badge whenever one closes rather than polling.
+        // A sheet closing is the single most likely moment for the friend
+        // list to have changed — accepting a request happens in Notifications
+        // or in Friends, and both of those are sheets over this map. Only the
+        // badge was being recounted here, so a brand-new friend stayed
+        // invisible on the map until the app was relaunched.
         .onChange(of: activeDockSheet) { _, new in
-            if new == nil, let id = auth.profile?.id { Task { await refreshNotificationCount(id) } }
+            guard new == nil, let id = auth.profile?.id else { return }
+            Task {
+                await reload(id)
+                await refreshNotificationCount(id)
+            }
         }
         .onChange(of: showNotifications) { _, open in
-            if !open, let id = auth.profile?.id { Task { await refreshNotificationCount(id) } }
+            guard !open, let id = auth.profile?.id else { return }
+            Task {
+                await reload(id)
+                await refreshNotificationCount(id)
+            }
+        }
+        // And the other half: someone accepts *your* request while the app is
+        // in your pocket. Coming back to the app re-reads rather than showing
+        // whatever was true at launch.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let id = auth.profile?.id else { return }
+            Task {
+                await reload(id)
+                await refreshNotificationCount(id)
+            }
         }
     }
 
@@ -432,7 +454,14 @@ struct MapScreen: View {
     private func focus(on friend: Friend) {
         Haptics.shared.play(.tap)
         selected = friend
-        guard let coordinate = friend.location?.coordinate else { return }
+        guard let coordinate = friend.location?.coordinate else {
+            // A friend with no row in `locations` has no pin, which is
+            // correct — but tapping them and having the map sit there says
+            // nothing about why. Usually they haven't opened the app or
+            // haven't allowed location yet.
+            show("\(friend.displayName) hasn't shared a location yet")
+            return
+        }
         withAnimation {
             camera = .region(MKCoordinateRegion(
                 center: coordinate,
@@ -444,7 +473,16 @@ struct MapScreen: View {
     private func reload(_ userId: UUID) async {
         async let friendsTask = FriendsService.load(for: userId)
         async let placesTask = (try? PlacesService.loadVisible()) ?? []
-        friends = (try? await friendsTask) ?? []
+
+        do {
+            friends = try await friendsTask
+        } catch {
+            // `try?` here meant a failing friends query and an account with
+            // no friends looked identical — an empty rail either way, and no
+            // hint that anything had gone wrong. Keep whatever was already on
+            // screen and say so.
+            show("Couldn't refresh friends: \(error.localizedDescription)")
+        }
         nightPlaces = await placesTask
         publishWidgetSnapshot()
     }

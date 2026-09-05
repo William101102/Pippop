@@ -640,6 +640,25 @@ create policy "respond to friend request" on public.friendships for update
   using (auth.uid() = addressee_id and status = 'pending')
   with check (auth.uid() = addressee_id and status in ('accepted', 'declined'));
 
+-- A declined request used to be a dead end, and a silent one. friendships_pair_unique
+-- covers the pair in both directions, so once a row exists no new one can ever be
+-- inserted for those two people; and the only UPDATE policy above belongs to the
+-- addressee, acting on a 'pending' row. So re-sending after a decline matched zero
+-- rows — which Postgres reports as success — and the app said "Request sent" while
+-- writing nothing. Those two could then never become friends by any route.
+--
+-- This lets a declined row come back into play: the requester may re-send it, and
+-- the person who declined may change their mind and accept outright. Actual
+-- unwanted contact is what public.blocks is for; a decline is not meant to be
+-- permanent.
+drop policy if exists "reopen declined friendship" on public.friendships;
+create policy "reopen declined friendship" on public.friendships for update
+  using (auth.uid() in (requester_id, addressee_id) and status = 'declined')
+  with check (
+    (auth.uid() = requester_id and status = 'pending')
+    or (auth.uid() = addressee_id and status in ('pending', 'accepted'))
+  );
+
 drop policy if exists "remove own friendship" on public.friendships;
 create policy "remove own friendship" on public.friendships for delete
   using (auth.uid() in (requester_id, addressee_id));

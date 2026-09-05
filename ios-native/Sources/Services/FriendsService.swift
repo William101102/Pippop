@@ -50,7 +50,15 @@ enum FriendsService {
 
         async let bestFriendTask: Set<UUID> = loadBestFriendIds(for: userId)
 
-        let (profiles, locations, bestFriendIds) = try await (profilesTask, locationsTask, bestFriendTask)
+        // Profiles are the list. Locations and best-friend pins are
+        // decoration on top of it, so they must not be able to take it down:
+        // one row the decoder chokes on — a `friend_locations` row with a
+        // null lat, a date format it doesn't like — used to throw out of the
+        // whole function and leave you with *no friends at all*, which is a
+        // spectacularly misleading way to report "one location looked odd".
+        let profiles = try await profilesTask
+        let locations = (try? await locationsTask) ?? []
+        let bestFriendIds = (try? await bestFriendTask) ?? []
 
         let locationById = Dictionary(uniqueKeysWithValues: locations.map { ($0.userId, $0) })
         let rowByFriendId = Dictionary(
@@ -108,12 +116,39 @@ enum FriendsService {
     /// friend request" RLS policy — so this simply attempts the update and
     /// lets a rejected write surface as a thrown error.
     static func respond(_ relId: UUID, accept: Bool) async throws {
+        try await setStatus(accept ? "accepted" : "declined", on: relId)
+    }
+
+    /// Every status write goes through here, and every one of them checks
+    /// that a row actually changed.
+    ///
+    /// This is the important part: an UPDATE that RLS refuses does **not**
+    /// raise an error. It matches zero rows and returns success. The old code
+    /// took that as done and told the user "Request sent" — the single most
+    /// misleading thing a client can do, and the reason a request could
+    /// vanish with no trace on either side. Asking for the updated rows back
+    /// turns a silent refusal into a visible failure.
+    private static func setStatus(_ status: String, on relId: UUID) async throws {
         struct StatusUpdate: Encodable { let status: String }
-        try await Backend.client
+        struct Updated: Decodable { let id: UUID }
+
+        let changed: [Updated] = try await Backend.client
             .from("friendships")
-            .update(StatusUpdate(status: accept ? "accepted" : "declined"))
+            .update(StatusUpdate(status: status))
             .eq("id", value: relId)
+            .select("id")
             .execute()
+            .value
+
+        guard !changed.isEmpty else { throw FriendsError.writeRefused }
+    }
+
+    enum FriendsError: LocalizedError {
+        case writeRefused
+
+        var errorDescription: String? {
+            "The server wouldn't accept that change — the request may have already been answered."
+        }
     }
 
     /// Sends a request, or — if the target already invited *us* first —
@@ -143,12 +178,10 @@ enum FriendsService {
                 return "accepted"
             }
             if row.status == "pending" { return "already_sent" }
-            struct StatusUpdate: Encodable { let status: String }
-            try await Backend.client
-                .from("friendships")
-                .update(StatusUpdate(status: "pending"))
-                .eq("id", value: row.id)
-                .execute()
+            // Re-opening a declined row. Needs the "reopen declined
+            // friendship" policy in setup.sql — without it this is refused,
+            // and `setStatus` now throws instead of pretending it worked.
+            try await setStatus("pending", on: row.id)
             return "sent"
         }
 

@@ -280,7 +280,10 @@ struct FriendsView: View {
             requests = loadedRequests
             errorMessage = nil
         } catch {
-            errorMessage = "Couldn't load friends — pull to try again."
+            // The real message, not a friendly stand-in. "Pull to try again"
+            // is useless advice when the cause is a row that will fail to
+            // decode exactly the same way on every retry.
+            errorMessage = "Couldn't load friends: \(error.localizedDescription)"
         }
         loading = false
     }

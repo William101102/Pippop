@@ -25,12 +25,28 @@ export async function signUp(input: {
   const { data: taken } = await supabase.from('profiles').select('id').eq('username', username).maybeSingle();
   if (taken) return { error: 'That ID is already taken — try another one' };
 
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  // The chosen name has to travel with the signup, not just be written
+  // afterwards: `handle_new_user` (202608300003_auth_profile_bootstrap)
+  // creates the profile row the instant the auth user exists, and reads
+  // these two keys. Without them it falls back to `user_xxxxxxxx`, which is
+  // the name someone confirming by email would then be stuck with — the
+  // client code below never runs in that flow.
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { username, display_name: displayName } },
+  });
   if (error) return { error: error.message };
   if (!data.session) return { error: 'Signed up! Please check your email to confirm before logging in.', needsEmailConfirm: true, email };
 
   const color = colorFor(username);
-  const { error: profErr } = await supabase.from('profiles').insert({
+  // `upsert`, not `insert`. The bootstrap trigger has already inserted a row
+  // for this id, so a plain insert always failed with 23505 — on the *id*
+  // primary key, not on the username — and the branch below read that as
+  // "that ID is taken", signed the new user straight back out, and left them
+  // unable to ever sign up. Upsert updates the row the trigger made, and
+  // still works if the trigger isn't installed.
+  const { error: profErr } = await supabase.from('profiles').upsert({
     id: data.user!.id,
     username,
     display_name: displayName,

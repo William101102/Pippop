@@ -181,6 +181,23 @@ final class AuthService {
 
     func signInWithGoogle(presenting: UIViewController) async {
         lastError = nil
+
+        // `GIDClientID` comes from `$(GOOGLE_CLIENT_ID)` in Secrets.xcconfig.
+        // If that file is missing — or sitting anywhere other than
+        // Sources/Config/, the only path project.yml's `configFiles:` looks
+        // at — the variable resolves to an empty string and the build still
+        // succeeds. The first sign of trouble is then a Google page saying
+        // "Error 401: invalid_client — The OAuth client was not found",
+        // which points at Google rather than at the real cause. Say what
+        // actually happened instead.
+        let clientId = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String ?? ""
+        guard clientId.hasSuffix(".apps.googleusercontent.com") else {
+            lastError = clientId.isEmpty
+                ? "This build has no Google client ID. Put Secrets.xcconfig in ios-native/Sources/Config/ and re-run `xcodegen generate`."
+                : "This build's Google client ID looks malformed. Check GOOGLE_CLIENT_ID in Secrets.xcconfig."
+            return
+        }
+
         do {
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenting)
             guard let idToken = result.user.idToken?.tokenString else {
