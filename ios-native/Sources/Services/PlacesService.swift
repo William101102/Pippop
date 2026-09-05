@@ -21,6 +21,11 @@ struct SignificantPlace: Codable, Identifiable, Hashable, Sendable {
     var kind: Kind
     var lat: Double
     var lng: Double
+    /// The grid cell this row is keyed by. Needed on the client because a
+    /// write has to target an *existing* row's cell to keep a streak
+    /// together — see `record(fix:userId:on:kind:)`.
+    var cellLat: Int
+    var cellLng: Int
     /// Consecutive nights (overnight) or working days (work) at this spot.
     /// Resets to 1 the moment one is skipped, so it only ever reflects an
     /// unbroken streak.
@@ -317,19 +322,37 @@ enum PlacesService {
         let cellLng = cell(fix.lng)
         let seenAt = timestamp(for: day, kind: kind, calendar: calendar)
 
-        let existing: [SignificantPlace] = (try? await Backend.client
+        // Match by **distance**, not by exact cell. A fix drifting across a
+        // cell boundary — indoors one night, by the car the next — used to
+        // start a brand-new row, which split one place into two pins and, far
+        // worse, into two independent streaks that could each never reach
+        // seven. Anything within `mergeRadius` of an existing place is that
+        // place, and the write targets its original cell so the row (and its
+        // streak) stays whole.
+        let mine: [SignificantPlace] = (try? await Backend.client
             .from("significant_places")
             .select()
             .eq("user_id", value: userId)
             .eq("kind", value: kind.rawValue)
-            .eq("cell_lat", value: cellLat)
-            .eq("cell_lng", value: cellLng)
-            .limit(1)
             .execute()
             .value) ?? []
 
+        let here = CLLocation(latitude: fix.lat, longitude: fix.lng)
+        let existing = mine
+            .map { ($0, here.distance(from: CLLocation(latitude: $0.lat, longitude: $0.lng))) }
+            .filter { $0.1 <= mergeRadius }
+            .min { $0.1 < $1.1 }
+            .map(\.0)
+
+        // Keep the established row's anchor so the pin doesn't wander a few
+        // metres every night.
+        let targetCellLat = existing?.cellLat ?? cellLat
+        let targetCellLng = existing?.cellLng ?? cellLng
+        let anchorLat = existing?.lat ?? fix.lat
+        let anchorLng = existing?.lng ?? fix.lng
+
         let newScore: Double
-        if let row = existing.first {
+        if let row = existing {
             let expected = previousDay(before: day, kind: kind, calendar: calendar)
             let recorded = Self.day(of: row.lastSeenAt, kind: kind, calendar: calendar)
             newScore = calendar.isDate(recorded, inSameDayAs: expected) ? row.score + 1 : 1
@@ -351,7 +374,7 @@ enum PlacesService {
         try? await Backend.client
             .from("significant_places")
             .upsert(
-                Upsert(userId: userId, kind: kind.rawValue, lat: fix.lat, lng: fix.lng, cellLat: cellLat, cellLng: cellLng, score: newScore, lastSeenAt: seenAt),
+                Upsert(userId: userId, kind: kind.rawValue, lat: anchorLat, lng: anchorLng, cellLat: targetCellLat, cellLng: targetCellLng, score: newScore, lastSeenAt: seenAt),
                 onConflict: "user_id,kind,cell_lat,cell_lng"
             )
             .execute()
@@ -370,26 +393,50 @@ enum PlacesService {
         return collapse(rows.filter { !$0.isStale && $0.isDisplayable })
     }
 
-    /// GPS drift can push the same building across a grid-cell boundary,
-    /// leaving two rows a hundred metres apart — which is how a home badge
-    /// and a night-place badge ended up stacked on one spot. Per person,
-    /// across kinds, keep the strongest row and drop anything within
-    /// `mergeRadius` of one already kept: one place, one pin. (Someone whose
-    /// home *is* their workplace therefore shows as home, which is the more
-    /// meaningful of the two.)
+    /// Two rows a few hundred metres apart are still one person's one home —
+    /// the grid cell moves when a fix drifts, or when they park on the other
+    /// side of the building. Merging by distance alone couldn't fix that
+    /// (the cells were further apart than any sane radius), so the rule is
+    /// now the simple one: **a person gets one house and one workplace.**
+    ///
+    /// Which house:
+    ///
+    /// - an established home (streak past `homeStreakNights`) wins, so one
+    ///   night at a hotel doesn't demote somewhere you've slept for weeks;
+    /// - otherwise the most recent night, so before a home exists the pin
+    ///   follows where you actually slept.
+    ///
+    /// That's also what makes the promotion read the way it should: the same
+    /// single house sits there and turns from the violet night place into the
+    /// coral home once the streak lands.
     private static let mergeRadius: CLLocationDistance = 200
 
     private static func collapse(_ places: [SignificantPlace]) -> [SignificantPlace] {
         var kept: [SignificantPlace] = []
-        for place in places.sorted(by: { $0.score > $1.score }) {
-            let clash = kept.contains { other in
-                other.userId == place.userId
-                    && CLLocation(latitude: other.lat, longitude: other.lng)
-                        .distance(from: CLLocation(latitude: place.lat, longitude: place.lng)) < mergeRadius
+
+        for (_, mine) in Dictionary(grouping: places, by: \.userId) {
+            let overnight = mine.filter { $0.kind == .overnight }
+            let established = overnight.filter(\.isHome)
+            let house = (established.isEmpty ? overnight : established)
+                .max { lhs, rhs in
+                    if lhs.lastSeenAt != rhs.lastSeenAt { return lhs.lastSeenAt < rhs.lastSeenAt }
+                    return lhs.score < rhs.score
+                }
+            let work = mine.filter(\.isWorkplace).max { $0.lastSeenAt < $1.lastSeenAt }
+
+            // A home that *is* the workplace would otherwise stack two pins on
+            // one building; home is the more meaningful of the two.
+            if let house { kept.append(house) }
+            if let work, house.map({ Self.metres(from: $0, to: work) >= mergeRadius }) ?? true {
+                kept.append(work)
             }
-            if !clash { kept.append(place) }
         }
         return kept
+    }
+
+    private static func metres(from lhs: SignificantPlace, to rhs: SignificantPlace) -> CLLocationDistance {
+        CLLocation(latitude: lhs.lat, longitude: lhs.lng)
+            .distance(from: CLLocation(latitude: rhs.lat, longitude: rhs.lng))
     }
 
     private static func nightKey(for date: Date, calendar: Calendar) -> String {
