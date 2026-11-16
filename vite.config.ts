@@ -3,10 +3,11 @@ import react from '@vitejs/plugin-react';
 
 // The native app loads from capacitor://localhost, so its assets must resolve
 // against the bundle root. A custom domain also serves from the root, while the
-// github.io project site serves from /zenly-app/.
+// github.io project site serves from /<repo-name>/ (taken from GITHUB_REPOSITORY).
 const native = Boolean(process.env.CAP_BUILD);
+const repo = process.env.GITHUB_REPOSITORY?.split('/')[1] ?? 'Pippop';
 const base =
-  native || !process.env.GITHUB_ACTIONS || process.env.PAGES_CUSTOM_DOMAIN ? '/' : '/zenly-app/';
+  native || !process.env.GITHUB_ACTIONS || process.env.PAGES_CUSTOM_DOMAIN ? '/' : `/${repo}/`;
 
 export default defineConfig({
   plugins: [react()],
