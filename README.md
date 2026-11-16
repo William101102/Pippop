@@ -31,49 +31,35 @@ people who do not have the app yet.
 - **Invite links** — sharing your link mints a token; whoever opens it becomes
   a friend immediately, no separate approval step.
 
-## 功能一览（中文）
+## Feature Overview
 
-Pinpop 是一个 Zenly 风格的社交地图 App：好友在地图上实时显示位置，可以打招呼、
-聊天、看看谁在附近。同一套 React 代码同时是网页版和 iOS App。
+Pinpop is a Zenly-style social map app. Friends appear on the map in real time, and you can say hi, chat, and see who's nearby. The same React codebase powers both the web app and the iOS app.
 
-**地图与位置**
-- 实时位置地图 — 好友的头像随着他们移动在地图上实时更新。
-- **Ghost Mode（幽灵模式）** — 三档位置隐私：精确 / 模糊（随机偏移约
-  0.2–1.2 公里）/ 冻结（停在最后一次分享的位置），可以针对单个好友单独设置，
-  好友端拿不到你的真实坐标。
-- 圆环颜色：绿色表示正在实时分享位置，灰色表示已隐藏或很久没更新。
-- 缩小地图时，重叠的人会合并成一个带数字的圆圈，点一下放大回去。
-- **附近打卡** — 到一个地方可以打卡（咖啡、吃饭、公园、健身房、购物、家、
-  工作、其他），可以选择好友可见或仅自己可见。
-- **足迹与热力图** — 记录你常去的地方和停留时长，热力图只有你自己能看到；
-  自动识别「过夜地点」（比如家），这部分数据完全私密。
+**Map & Location**
+- Live location map: Friends' avatars move on the map in real time as they move.
+- **Ghost Mode**: Three levels of location privacy: Precise / Blurred (randomly offset by about 0.2–1.2 km) / Frozen (stays at the last shared location). You can set it separately for each friend, and friends never receive your real coordinates.
+- Ring color: Green means live location is being shared. Gray means it's hidden or hasn't updated for a long time.
+- When you zoom out, overlapping people merge into one circle with a number. Tap it to zoom back in.
+- **Nearby check-ins**: Check in at a place (coffee, food, park, gym, shopping, home, work, other) and choose whether friends can see it or only you.
+- **Footprints & heatmap**: Tracks the places you visit often and how long you stay. The heatmap is visible only to you. Overnight places (like your home) are detected automatically, and that data stays completely private.
 
-**社交互动**
-- **扔东西** — 打开一个好友的名片，可以从 14 种表情道具里选一个扔过去
-  （🎂🌹🍕💦…），带一个小动画，对方会弹出一个庆祝弹窗。
-- **连续互动火花（Streak）** — 你和某个好友连续互动（聊天或互扔东西）的天数
-  会点亮 ✨ → 🔥 → 💯 的等级徽章，快断掉时会有 ⏳ 提醒，第一次达到里程碑
-  （3/7/14/30/50/100/200/365 天）还会有小庆祝动画。
-- **火花补救机制**（抖音同款逻辑）— 断了一天没关系，只要接下来连续 3 天
-  互动，火花会补救回断掉之前的天数（外加这 3 天），名片上会显示 🩹 补救进度。
-- **Highlights（限时动态）** — 在「朋友」页发一张照片或一句话，好友会在
-  Zenly/Snap 风格的故事栏里看到，24 小时后自动消失。可以选择带上你的位置，
-  这样地图上还会出现一个圆形的动态图钉（类似 Snap Map），过期后自动消失。
-- **Zenlands（我的地标）** — 给常去的地方（比如健身房）起个名字，好友能看到
-  这个名字，你到达/离开时他们会收到通知。
-- **群聊** — 选至少两位好友，创建一个群聊天。
-- **一对一聊天** — 私聊、未读消息角标、通知中心汇总好友请求/未读消息/收到
-  的表情/好友动态。
+**Social Interaction**
+- **Throw items**: Open a friend's profile card, pick one of 14 emoji items (🎂🌹🍕💦…), and throw it with a short animation. The friend gets a celebration popup.
+- **Streaks**: The number of consecutive days you and a friend interact (by chatting or throwing items) unlocks level badges: ✨ → 🔥 → 💯. A ⏳ reminder appears when a streak is about to break, and the first time you hit a milestone (3/7/14/30/50/100/200/365 days) there is a small celebration animation.
+- **Streak recovery** (same logic as TikTok/Douyin): Missing a day is fine. If you interact for the next 3 days in a row, the streak is restored to the number it had before it broke (plus those 3 days). The profile card shows 🩹 recovery progress.
+- **Highlights (stories)**: Post a photo or a line of text on the Friends tab. Friends see it in a Zenly/Snap-style story bar, and it disappears after 24 hours. You can attach your location, which also puts a circular story pin on the map (like Snap Map). It disappears when it expires.
+- **Zenlands (my places)**: Give a name to a place you visit often (like your gym). Friends can see the name, and they get a notification when you arrive or leave.
+- **Group chat**: Pick at least two friends to create a group chat.
+- **One-on-one chat**: Private chat, unread message badges, and a notification center that collects friend requests, unread messages, received emoji items, and friend updates.
 
-**加好友**
-- **邀请链接一键加好友** — 分享你的专属链接，对方点开就直接成为好友，
-  不需要再走一遍「同意请求」的流程（和 Discord/WhatsApp 的邀请链接逻辑一样）。
-- 也支持搜索用户名/昵称手动加好友，以及传统的发送/接受好友请求流程。
+**Adding Friends**
+- **One-tap invite link**: Share your personal link, and anyone who opens it becomes your friend right away, without the "accept request" step (same logic as Discord/WhatsApp invite links).
+- You can also add friends by searching username/nickname, and the traditional send/accept friend request flow is supported too.
 
-**账号与语言**
-- 邮箱注册/登录，头像上传（自动裁剪压缩），状态文字/表情自定义。
-- 账号删除（危险操作二次确认）。
-- 现在整个 App 界面已经全部改为英文（原本是中文），适合面向海外用户。
+**Account & Language**
+- Sign up and log in with email, avatar upload (automatically cropped and compressed), and custom status text/emoji.
+- Account deletion (with a second confirmation for this dangerous action).
+- The whole app interface is now fully in English (it was originally in Chinese), which makes it suitable for overseas users.
 
 ## Run it locally
 
